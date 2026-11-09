@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#101f38"><meta name="description" content="P.S ENTERPRISES inventory and business manager">
+<link rel="manifest" href="manifest.webmanifest"><title>P.S ENTERPRISES</title>
+<style>
+:root{--ink:#17243a;--muted:#778397;--navy:#101f38;--blue:#3d6ee8;--blue2:#edf2ff;--green:#16845d;--red:#c04b4b;--bg:#f5f7fb;--line:#e8edf4;--shadow:0 8px 28px rgba(24,42,75,.06)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
+header{padding:22px 18px 20px;background:linear-gradient(135deg,#101f38,#203c68);color:#fff;border-radius:0 0 24px 24px}
+.top{display:flex;justify-content:space-between;align-items:center}.brand{font-size:20px;font-weight:850;letter-spacing:1.4px}.tag{font-size:10px;letter-spacing:1.6px;color:#b8c8e4;margin-top:4px}.date{font-size:11px;color:#d1dcf0;background:#ffffff16;padding:8px 10px;border-radius:20px}
+.hero{margin-top:20px}.hero small{color:#b8c8e4;text-transform:uppercase;letter-spacing:1px;font-size:10px}.hero strong{display:block;font-size:28px;margin-top:3px}
+nav{position:sticky;top:0;z-index:5;display:flex;overflow-x:auto;gap:4px;padding:8px;background:#fff;border-bottom:1px solid var(--line)}
+nav button{white-space:nowrap;border:0;background:transparent;color:var(--muted);font-weight:700;font-size:11px;padding:11px 12px;border-radius:10px}nav button.active{background:var(--blue2);color:var(--blue)}
+main{max-width:760px;margin:auto;padding:16px 14px 90px}h2{font-size:17px;margin:5px 0 12px}.note{font-size:11px;color:var(--muted);margin:-6px 0 13px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.card,.panel{background:white;border:1px solid var(--line);border-radius:15px;padding:14px;margin-bottom:10px;box-shadow:var(--shadow)}
+.k{font-size:10px;color:var(--muted);font-weight:700}.v{font-size:20px;font-weight:850;margin-top:6px}.green{color:var(--green);font-weight:800}.red{color:var(--red);font-weight:800}
+label{display:block;font-size:11px;color:#68768b;font-weight:750;margin:11px 0 5px}
+input,select{width:100%;padding:12px;border:1px solid #e0e6ef;border-radius:10px;background:#fbfcfe;color:var(--ink);font:inherit;outline:none}
+input:focus,select:focus{border-color:#91a9f5;box-shadow:0 0 0 3px #3d6ee814}
+button.primary{border:0;border-radius:11px;padding:13px;background:var(--blue);color:white;font-weight:800;width:100%;margin-top:14px}
+button.soft{border:0;border-radius:9px;padding:9px 11px;background:var(--blue2);color:var(--blue);font-weight:750}button.danger{border:1px solid #f2dada;background:#fff8f8;color:#b34444;border-radius:9px;padding:8px 10px;font-size:11px;font-weight:700}
+.row{display:flex;justify-content:space-between;align-items:center;gap:10px}.muted{font-size:11px;color:var(--muted)}.pill{font-size:10px;font-weight:750;padding:5px 8px;border-radius:20px;background:#eef3ff;color:#4266c8}
+.hidden{display:none!important}.empty{padding:23px;text-align:center;color:var(--muted);background:#fff;border:1px dashed #d9e1ed;border-radius:14px}
+.notice{background:#fff8e8;border:1px solid #f2e2b8;padding:11px;border-radius:11px;color:#765b1a;font-size:11px;line-height:1.5}
+hr{border:0;border-top:1px solid var(--line);margin:12px 0}footer{text-align:center;color:#98a2b3;font-size:10px;padding:18px}
+@media(min-width:600px){main{padding-top:22px}.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+</style></head><body>
+<header><div class="top"><div><div class="brand">P.S ENTERPRISES</div><div class="tag">INVENTORY & BUSINESS MANAGER</div></div><div class="date" id="today"></div></div><div class="hero"><small>Current stock value</small><strong id="stockValue">₹0</strong><span class="muted" style="color:#c4d2e8">Live inventory overview</span></div></header>
+<nav><button class="active" data-tab="home">Overview</button><button data-tab="products">Products</button><button data-tab="purchase">Purchase</button><button data-tab="sales">Sales</button><button data-tab="stock">Stock</button><button data-tab="history">History</button><button data-tab="reports">Reports</button><button data-tab="gst">GST</button></nav>
+<main>
+<section id="home"><h2>Business Overview</h2><div class="grid">
+<div class="card"><div class="k">PRODUCTS</div><div class="v" id="countProducts">0</div></div>
+<div class="card"><div class="k">STOCK CARTONS</div><div class="v" id="countStock">0</div></div>
+<div class="card"><div class="k">TOTAL PURCHASES</div><div class="v" id="totalPurchase">₹0</div></div>
+<div class="card"><div class="k">TOTAL SALES</div><div class="v" id="totalSales">₹0</div></div>
+<div class="card"><div class="k">EST. GROSS PROFIT</div><div class="v green" id="totalProfit">₹0</div></div>
+<div class="card"><div class="k">LOW STOCK ITEMS</div><div class="v" id="lowStock">0</div></div>
+</div><h2>Recent Activity</h2><div id="recent"></div><div class="notice">Product rates and stock are saved on this phone. Download a backup regularly. Stock updates automatically when you save purchases and sales.</div></section>
+
+<section id="products" class="hidden"><h2>Product Catalogue</h2><p class="note">Add each product once. Select it later in Purchase or Sales.</p><div class="panel">
+<label>Product name</label><input id="prodName" placeholder="e.g. Rajnigandha">
+<label>Category</label><select id="prodCategory"><option>Pan Masala</option><option>Betel Leaf</option><option>Other</option></select>
+<div class="grid"><div><label>Purchase rate / carton (₹)</label><input id="prodBuy" type="number" min="0" value="66700"></div><div><label>Sales rate / carton (₹)</label><input id="prodSell" type="number" min="0" value="66900"></div><div><label>Pieces per carton</label><input id="prodPieces" type="number" min="1" value="60"></div><div><label>Low-stock alert (cartons)</label><input id="prodAlert" type="number" min="0" value="1"></div></div>
+<button class="primary" id="saveProduct">SAVE PRODUCT</button></div><h2>Saved Products</h2><div id="productList"></div></section>
+
+<section id="purchase" class="hidden"><h2>New Purchase</h2><p class="note">Select a saved product. Rates will fill automatically and stock will increase.</p><div class="panel">
+<label>Select product</label><select id="purchaseProduct"></select>
+<div class="grid"><div><label>Cartons purchased</label><input id="purchaseQty" type="number" min="0.01" step="any" value="1"></div><div><label>Purchase rate / carton (₹)</label><input id="purchaseRate" type="number" min="0" step="any"></div></div>
+<label>Purchase date</label><input id="purchaseDate" type="date">
+<label>Payment method</label><select id="purchasePayment"><option>Cash</option><option>UPI</option><option>Bank transfer</option><option>Credit</option></select>
+<label>Supplier / note</label><input id="purchaseNote" placeholder="Supplier or payment reference">
+<div class="card" style="background:#f7f9fd;box-shadow:none"><div class="row"><span class="muted">Total purchase</span><b id="purchaseTotal">₹0</b></div></div>
+<button class="primary" id="savePurchase">SAVE PURCHASE & UPDATE STOCK</button></div></section>
+
+<section id="sales" class="hidden"><h2>New Sale</h2><p class="note">Choose a product. Available stock and selling rate appear automatically.</p><div class="panel">
+<label>Select product</label><select id="salesProduct"></select>
+<div class="card" style="background:#f7f9fd;box-shadow:none"><div class="row"><span class="muted">Available stock</span><b id="availableStock">0 cartons</b></div></div>
+<label>Sales channel</label><select id="salesChannel"><option>Retail</option><option>Wholesale</option></select>
+<div class="grid"><div><label>Cartons sold</label><input id="salesQty" type="number" min="0.01" step="any" value="1"></div><div><label>Selling rate / carton (₹)</label><input id="salesRate" type="number" min="0" step="any"></div></div>
+<label>Other expenses (₹)</label><input id="salesExpense" type="number" min="0" value="0">
+<label>Sales date</label><input id="salesDate" type="date">
+<label>Payment received by</label><select id="salesPayment"><option>Cash</option><option>UPI</option><option>Bank transfer</option><option>Credit / Due</option></select>
+<label>Customer / note</label><input id="salesNote" placeholder="Customer or payment note">
+<div class="card" style="background:#f7f9fd;box-shadow:none"><div class="row"><span class="muted">Total sale</span><b id="salesTotal">₹0</b></div><div class="row" style="margin-top:8px"><span class="muted">Estimated gross profit</span><b class="green" id="salesProfit">₹0</b></div></div>
+<button class="primary" id="saveSale">SAVE SALE & UPDATE STOCK</button></div></section>
+
+<section id="stock" class="hidden"><h2>Live Stock</h2><p class="note">Stock increases with purchases and decreases with sales.</p><div id="stockList"></div></section>
+<section id="history" class="hidden"><h2>Transaction History</h2><div class="row"><select id="historyFilter"><option value="all">All transactions</option><option value="purchase">Purchases</option><option value="sale">Sales</option></select><button class="soft" id="exportCsv">Export CSV</button></div><div id="historyList" style="margin-top:10px"></div><div class="row"><button class="soft" id="backup">Download Backup</button><button class="soft" id="restoreBtn">Restore Backup</button></div><input type="file" id="restoreFile" accept=".json" class="hidden"></section>
+<section id="reports" class="hidden"><h2>Monthly Reports</h2><div class="panel"><label>Select month</label><input type="month" id="reportMonth"><div id="reportResult" style="margin-top:13px"></div></div></section>
+<section id="gst" class="hidden"><h2>GST Estimate</h2><div class="notice">Reference calculator only. Verify HSN and current applicable rate. It does not file GST returns or determine legal tax liability. Do not claim ITC without a valid tax invoice.</div><div class="panel"><label>Amount (₹)</label><input id="gstAmount" type="number" value="66900"><label>GST rate (%)</label><input id="gstRate" type="number" value="0"><label>Amount type</label><select id="gstMode"><option value="inclusive">GST included</option><option value="exclusive">GST extra</option></select><div class="row" style="margin-top:15px"><span>Estimated GST</span><b id="gstTax">₹0</b></div><div class="row"><span>Taxable value</span><b id="gstBase">₹66,900</b></div><div class="row"><span>Total amount</span><b id="gstTotal">₹66,900</b></div></div></section>
+<footer>P.S ENTERPRISES · INVENTORY & BUSINESS LEDGER</footer></main>
+<script>
+const $=id=>document.getElementById(id),money=n=>'₹'+(Number(n)||0).toLocaleString('en-IN',{maximumFractionDigits:2}),today=new Date().toISOString().slice(0,10);
+let db=JSON.parse(localStorage.getItem('ps_ent_inventory_v1')||'{"products":[],"purchases":[],"sales":[]}');db.products??=[];db.purchases??=[];db.sales??=[];
+const persist=()=>localStorage.setItem('ps_ent_inventory_v1',JSON.stringify(db)),num=id=>Math.max(0,Number($(id).value)||0),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+$('today').textContent=new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+['purchaseDate','salesDate'].forEach(id=>$(id).value=today);$('reportMonth').value=today.slice(0,7);
+function product(id){return db.products.find(p=>p.id===Number(id))}
+function stock(p){return db.purchases.filter(x=>x.productId===p.id).reduce((a,x)=>a+x.qty,0)-db.sales.filter(x=>x.productId===p.id).reduce((a,x)=>a+x.qty,0)}
+function tab(id){document.querySelectorAll('main section').forEach(s=>s.classList.toggle('hidden',s.id!==id));document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));if(id==='home')renderHome();if(id==='products')renderProducts();if(id==='stock')renderStock();if(id==='history')renderHistory();if(id==='reports')renderReports();if(id==='purchase'||id==='sales')refreshSelectors()}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>tab(b.dataset.tab));
+function refreshSelectors(){for(const id of ['purchaseProduct','salesProduct']){let old=$(id).value;$(id).innerHTML=db.products.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');if(!db.products.length)$(id).innerHTML='<option value="">Add products first</option>';if(product(old))$(id).value=old}fillPurchase();fillSales()}
+function fillPurchase(){let p=product($('purchaseProduct').value);$('purchaseRate').value=p?p.buyRate:'';purchasePreview()}
+function fillSales(){let p=product($('salesProduct').value);$('salesRate').value=p?p.sellRate:'';$('availableStock').textContent=p?stock(p)+' cartons':'0 cartons';salesPreview()}
+$('purchaseProduct').onchange=fillPurchase;$('salesProduct').onchange=fillSales;
+function purchasePreview(){$('purchaseTotal').textContent=money(num('purchaseQty')*num('purchaseRate'))}
+function salesPreview(){let p=product($('salesProduct').value),q=num('salesQty'),rate=num('salesRate'),cost=p?p.buyRate:0,total=q*rate,profit=total-q*cost-num('salesExpense');$('salesTotal').textContent=money(total);$('salesProfit').textContent=money(profit)}
+['purchaseQty','purchaseRate'].forEach(id=>$(id).oninput=purchasePreview);['salesQty','salesRate','salesExpense'].forEach(id=>$(id).oninput=salesPreview);
+$('saveProduct').onclick=()=>{let name=$('prodName').value.trim();if(!name){alert('Enter product name.');return}if(db.products.some(p=>p.name.toLowerCase()===name.toLowerCase())){alert('This product already exists. Edit it in the saved products list.');return}db.products.push({id:Date.now(),name,category:$('prodCategory').value,buyRate:num('prodBuy'),sellRate:num('prodSell'),pieces:num('prodPieces')||1,alert:num('prodAlert')});persist();$('prodName').value='';renderProducts();refreshSelectors();alert('Product saved. You can now select it in Purchase and Sales.')};
+function renderProducts(){$('productList').innerHTML=db.products.length?db.products.map(p=>`<div class="card"><div class="row"><b>${esc(p.name)}</b><span class="pill">${esc(p.category)}</span></div><div class="muted">${p.pieces} pcs/carton · Stock ${stock(p)} cartons</div><div class="row" style="margin-top:8px"><span>Buy ${money(p.buyRate)}</span><span>Sell ${money(p.sellRate)}</span></div><div class="row" style="margin-top:10px"><button class="soft" onclick="editProduct(${p.id})">Edit rates</button><button class="danger" onclick="deleteProduct(${p.id})">Delete</button></div></div>`).join(''):'<div class="empty">No products yet. Add your first product above.</div>'}
+window.editProduct=id=>{let p=product(id),b=prompt('Purchase rate per carton (₹)',p.buyRate);if(b===null)return;let s=prompt('Sales rate per carton (₹)',p.sellRate);if(s===null)return;let pcs=prompt('Pieces per carton',p.pieces);if(pcs===null)return;p.buyRate=Math.max(0,Number(b)||0);p.sellRate=Math.max(0,Number(s)||0);p.pieces=Math.max(1,Number(pcs)||1);persist();renderProducts();refreshSelectors()};
+window.deleteProduct=id=>{if(db.purchases.some(x=>x.productId===id)||db.sales.some(x=>x.productId===id)){alert('This product has transaction history and cannot be deleted.');return}if(confirm('Delete this product?')){db.products=db.products.filter(p=>p.id!==id);persist();renderProducts();refreshSelectors()}};
+$('savePurchase').onclick=()=>{let p=product($('purchaseProduct').value),q=num('purchaseQty');if(!p){alert('Add a product first.');return}if(q<=0){alert('Enter a valid quantity.');return}let rate=num('purchaseRate');db.purchases.push({id:Date.now(),created:Date.now(),productId:p.id,product:p.name,category:p.category,date:$('purchaseDate').value,qty:q,rate,total:q*rate,payment:$('purchasePayment').value,note:$('purchaseNote').value});p.buyRate=rate;persist();$('purchaseNote').value='';alert('Purchase saved. Stock increased by '+q+' carton(s).');tab('home')};
+$('saveSale').onclick=()=>{let p=product($('salesProduct').value),q=num('salesQty');if(!p){alert('Add a product first.');return}if(q<=0){alert('Enter a valid quantity.');return}let available=stock(p);if(q>available){alert('Insufficient stock. Available: '+available+' carton(s). Save a purchase first.');return}let rate=num('salesRate'),total=q*rate,profit=total-q*p.buyRate-num('salesExpense');db.sales.push({id:Date.now(),created:Date.now(),productId:p.id,product:p.name,category:p.category,date:$('salesDate').value,channel:$('salesChannel').value,qty:q,rate,cost:p.buyRate,total,expense:num('salesExpense'),profit,payment:$('salesPayment').value,note:$('salesNote').value});p.sellRate=rate;persist();$('salesNote').value='';alert('Sale saved. Stock reduced by '+q+' carton(s).');tab('home')};
+function renderStock(){$('stockList').innerHTML=db.products.length?db.products.map(p=>{let q=stock(p),low=q<=p.alert;return `<div class="card"><div class="row"><b>${esc(p.name)}</b><span class="pill">${esc(p.category)}</span></div><div class="row" style="margin-top:10px"><span class="muted">Available cartons</span><b class="${low?'red':'green'}">${q}</b></div><div class="muted">${p.pieces} pieces/carton · Cost rate ${money(p.buyRate)}</div><div class="muted">Stock value (at purchase rate): ${money(q*p.buyRate)}</div>${low?'<div class="red" style="font-size:11px;margin-top:6px">Low stock alert</div>':''}</div>`}).join(''):'<div class="empty">Add products to start stock tracking.</div>'}
+function renderHome(){let buy=db.purchases.reduce((a,x)=>a+x.total,0),sales=db.sales.reduce((a,x)=>a+x.total,0),profit=db.sales.reduce((a,x)=>a+x.profit,0),qty=db.products.reduce((a,p)=>a+stock(p),0),value=db.products.reduce((a,p)=>a+stock(p)*p.buyRate,0);$('stockValue').textContent=money(value);$('countProducts').textContent=db.products.length;$('countStock').textContent=qty;$('totalPurchase').textContent=money(buy);$('totalSales').textContent=money(sales);$('totalProfit').textContent=money(profit);$('lowStock').textContent=db.products.filter(p=>stock(p)<=p.alert).length;
+let recent=[...db.purchases.map(x=>({...x,type:'Purchase'})),...db.sales.map(x=>({...x,type:'Sale'}))].sort((a,b)=>b.created-a.created).slice(0,5);$('recent').innerHTML=recent.length?recent.map(x=>`<div class="card"><div class="row"><b>${esc(x.product)}</b><span class="pill">${x.type}</span></div><div class="muted">${x.date} · ${x.qty} carton(s)</div><div class="row" style="margin-top:7px"><b>${money(x.total)}</b><span class="${x.type==='Sale'?'green':''}">${x.type==='Sale'?'Profit '+money(x.profit):'Stock added'}</span></div></div>`).join(''):'<div class="empty">No activity yet. Add a product, then record a purchase.</div>'}
+function renderHistory(){let f=$('historyFilter').value,all=[...db.purchases.map(x=>({...x,type:'Purchase'})),...db.sales.map(x=>({...x,type:'Sale'}))].sort((a,b)=>b.created-a.created);if(f!=='all')all=all.filter(x=>x.type.toLowerCase()===f);$('historyList').innerHTML=all.length?all.map(x=>`<div class="card"><div class="row"><b>${esc(x.product)}</b><span class="pill">${x.type}</span></div><div class="muted">${x.date} · ${x.qty} carton(s) · ${esc(x.payment)}</div><div class="row" style="margin-top:8px"><span>${money(x.total)}</span><span class="${x.type==='Sale'?'green':''}">${x.type==='Sale'?'Profit '+money(x.profit):'Purchase'}</span></div></div>`).join(''):'<div class="empty">No transactions found.</div>'}
+$('historyFilter').onchange=renderHistory;
+function renderReports(){let m=$('reportMonth').value||today.slice(0,7),p=db.purchases.filter(x=>x.date.startsWith(m)),s=db.sales.filter(x=>x.date.startsWith(m)),pb=p.reduce((a,x)=>a+x.total,0),ss=s.reduce((a,x)=>a+x.total,0),pr=s.reduce((a,x)=>a+x.profit,0);$('reportResult').innerHTML=`<div class="row"><span>Purchases</span><b>${money(pb)}</b></div><div class="row"><span>Sales</span><b>${money(ss)}</b></div><div class="row"><span>Estimated gross profit</span><b class="green">${money(pr)}</b></div><div class="row"><span>Transactions</span><b>${p.length+s.length}</b></div>`}
+$('reportMonth').onchange=renderReports;
+function gstCalc(){let a=num('gstAmount'),r=num('gstRate'),inc=$('gstMode').value==='inclusive',tax=inc?a*r/(100+r):a*r/100;$('gstTax').textContent=money(tax);$('gstBase').textContent=money(inc?a-tax:a);$('gstTotal').textContent=money(inc?a:a+tax)}
+['gstAmount','gstRate','gstMode'].forEach(id=>$(id).oninput=gstCalc);
+function download(blob,name){let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+$('exportCsv').onclick=()=>{let rows=[['Type','Date','Product','Category','Qty cartons','Rate','Total','Profit','Payment','Note']];db.purchases.forEach(x=>rows.push(['Purchase',x.date,x.product,x.category,x.qty,x.rate,x.total,'',x.payment,x.note]));db.sales.forEach(x=>rows.push(['Sale',x.date,x.product,x.category,x.qty,x.rate,x.total,x.profit,x.payment,x.note]));download(new Blob(['\ufeff'+rows.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\n')],{type:'text/csv;charset=utf-8'}),'ps-enterprises-ledger.csv')};
+$('backup').onclick=()=>download(new Blob([JSON.stringify(db,null,2)],{type:'application/json'}),'ps-enterprises-backup.json');$('restoreBtn').onclick=()=>$('restoreFile').click();$('restoreFile').onchange=async e=>{try{let v=JSON.parse(await e.target.files[0].text());if(!v.products||!v.purchases||!v.sales)throw 0;if(confirm('Restore backup? Current data will be replaced.')){db=v;persist();renderHome();alert('Backup restored.')}}catch(_){alert('Invalid backup file.')}};
+if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js').catch(()=>{});
+refreshSelectors();renderHome();renderProducts();renderStock();gstCalc();purchasePreview();salesPreview();
+</script></body></html>
