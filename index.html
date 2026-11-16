@@ -3,7 +3,6 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0B2E1F"><meta name="description" content="P.S ENTERPRISES inventory and business manager">
 <link rel="manifest" href="manifest.webmanifest"><title>P.S ENTERPRISES</title>
-<!-- CDN Link for Supabase -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{--ink:#17243a;--muted:#778397;--navy:#0B2E1F;--blue:#0B2E1F;--blue2:#e6f4ea;--green:#16a34a;--red:#c04b4b;--bg:#f4f9f6;--line:#e0e9e4;--shadow:0 8px 28px rgba(11,46,31,.06)}
@@ -58,7 +57,7 @@ hr{border:0;border-top:1px solid var(--line);margin:12px 0}footer{text-align:cen
 
 <header><div class="top"><div><div class="brand">P.S ENTERPRISES</div><div class="tag">INVENTORY & BUSINESS MANAGER</div></div><div class="userbar"><div class="date" id="today"></div><button class="soft" id="logoutBtn">Log out</button></div></div><div class="hero"><small>Current stock value</small><strong id="stockValue">₹0</strong><span class="muted" style="color:#c4d2e8">Cloud inventory overview</span><div id="syncStatus">Not connected</div></div></header>
 
-<nav><button class="active" data-tab="home">Overview</button><button data-tab="products">Products</button><button data-tab="purchase">Purchase</button><button data-tab="sales">Sales</button><button data-tab="stock">Stock</button><button data-tab="history">History</button><button data-tab="reports">Reports</button><button data-tab="gst">GST</button></nav>
+<nav><button class="active" data-tab="home">Overview</button><button data-tab="products">Products</button><button data-tab="purchase">Purchase</button><button data-tab="sales">Sales</button><button data-tab="stock">Stock</button><button data-tab="history">History</button><button data-tab="reports">Reports</button><button data-tab="gst">GST</button><button data-tab="khata">Customer Khata</button></nav>
 
 <main>
 <section id="home"><h2>Business Overview</h2><div class="grid">
@@ -96,7 +95,7 @@ hr{border:0;border-top:1px solid var(--line);margin:12px 0}footer{text-align:cen
 <label>Other expenses (₹)</label><input id="salesExpense" type="number" min="0" value="0">
 <label>Sales date</label><input id="salesDate" type="date">
 <label>Payment received by</label><select id="salesPayment"><option>Cash</option><option>UPI</option><option>Bank transfer</option><option>Credit / Due</option></select>
-<label>Customer / note</label><input id="salesNote" placeholder="Customer or payment note">
+<div id="creditCustomerWrap" class="hidden"><label>Credit customer</label><select id="saleCustomer"></select><label>Amount received now (₹)</label><input id="saleReceivedNow" type="number" min="0" step="any" value="0"><p class="muted">The remaining sale amount will be added to the customer due.</p></div><label>Customer / note</label><input id="salesNote" placeholder="Customer or payment note">
 <div class="card" style="background:#f7f9fd;box-shadow:none"><div class="row"><span class="muted">Total sale</span><b id="salesTotal">₹0</b></div><div class="row" style="margin-top:8px"><span class="muted">Estimated net profit</span><b class="green" id="salesProfit">₹0</b></div></div>
 <button class="primary" id="saveSale">SAVE SALE & UPDATE STOCK</button></div></section>
 
@@ -107,9 +106,40 @@ hr{border:0;border-top:1px solid var(--line);margin:12px 0}footer{text-align:cen
 <section id="reports" class="hidden"><h2>Monthly Reports</h2><div class="panel"><label>Select month</label><input type="month" id="reportMonth"><div id="reportResult" style="margin-top:13px"></div></div></section>
 
 <section id="gst" class="hidden"><h2>GST Estimate</h2><div class="notice">Reference calculator only. Verify HSN and current applicable rate. It does not file GST returns or determine legal tax liability. Do not claim ITC without a valid tax invoice.</div><div class="panel"><label>Amount (₹)</label><input id="gstAmount" type="number" value="66900"><label>GST rate (%)</label><input id="gstRate" type="number" value="0"><label>Amount type</label><select id="gstMode"><option value="inclusive">GST included</option><option value="exclusive">GST extra</option></select><div class="row" style="margin-top:15px"><span>Estimated GST</span><b id="gstTax">₹0</b></div><div class="row"><span>Taxable value</span><b id="gstBase">₹66,900</b></div><div class="row"><span>Total amount</span><b id="gstTotal">₹66,900</b></div></div></section>
-<footer>P.S ENTERPRISES · INVENTORY & BUSINESS LEDGER</footer></main>
 
-<script>
+<section id="khata" class="hidden">
+  <h2>Customer Khata</h2>
+  <p class="note">Customer balances, credit sales and received payments.</p>
+  <div class="panel">
+    <h2>Add Customer</h2>
+    <label>Customer name</label><input id="custName" placeholder="Customer name">
+    <label>Mobile number</label><input id="custPhone" type="tel" placeholder="Mobile number">
+    <label>Address (optional)</label><input id="custAddress" placeholder="Address">
+    <label>Opening balance / old due (₹)</label><input id="custOpening" type="number" min="0" step="any" value="0">
+    <button class="primary" id="addCustomer">SAVE CUSTOMER</button>
+  </div>
+  <div class="panel">
+    <h2>Receive Payment</h2>
+    <label>Select customer</label><select id="paymentCustomer"></select>
+    <label>Amount received (₹)</label><input id="paymentAmount" type="number" min="0.01" step="any">
+    <label>Payment method</label><select id="paymentMethod"><option>Cash</option><option>UPI</option><option>Bank transfer</option></select>
+    <label>Note (optional)</label><input id="paymentNote" placeholder="Payment reference / note">
+    <button class="primary" id="saveCustomerPayment">SAVE PAYMENT</button>
+  </div>
+  <h2>Customer List</h2>
+  <div id="customerList"></div>
+  <div class="panel hidden" id="customerLedgerPanel">
+    <div class="row"><h2 id="ledgerCustomerName">Customer Ledger</h2><button class="soft" id="closeCustomerLedger">Close</button></div>
+    <div class="grid">
+      <div class="card"><div class="k">CURRENT DUE</div><div class="v red" id="ledgerDue">₹0</div></div>
+      <div class="card"><div class="k">CREDIT SALES</div><div class="v" id="ledgerSales">₹0</div></div>
+      <div class="card"><div class="k">PAYMENTS</div><div class="v green" id="ledgerPayments">₹0</div></div>
+    </div>
+    <div id="ledgerEntries"></div>
+  </div>
+</section>
+
+<footer>P.S ENTERPRISES · INVENTORY & BUSINESS LEDGER</footer></main><script>
 // 1. Check if Supabase loaded successfully
 window.onload = function() {
   if (typeof window.supabase === 'undefined') {
@@ -147,7 +177,7 @@ if (window.supabase) {
   sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 }
 
-var session = null, profile = null, db = {products:[],purchases:[],sales:[]}, refreshBusy = false;
+var session = null, profile = null, db = {products:[],purchases:[],sales:[],customers:[],customerLedger:[]}, refreshBusy = false;
 
 function num(id) { return Math.max(0, Number($(id).value) || 0); }
 function isAdmin() { return profile && profile.role === 'admin'; }
@@ -178,16 +208,22 @@ async function loadCloud() {
   try {
     var results = await Promise.all([
       sb.from('products').select('*').order('name'),
-      sb.from('transactions').select('*').order('created_at', {ascending: false}).limit(2000)
+      sb.from('transactions').select('*').order('created_at', {ascending: false}).limit(2000),
+      sb.from('customers').select('*').order('name'),
+      sb.from('customer_ledger').select('*').order('created_at', {ascending: false}).limit(5000)
     ]);
     if(results[0].error) throw results[0].error;
     if(results[1].error) throw results[1].error;
-    
+    if(results[2].error) throw results[2].error;
+    if(results[3].error) throw results[3].error;
+    db.customers = results[2].data || [];
+    db.customerLedger = results[3].data || [];
+
     db.products = (results[0].data || []).map(function(p) {
       return {id:p.id, name:p.name, category:p.category, buyRate:Number(p.buy_rate), retailRate:Number(p.retail_rate), sellRate:Number(p.retail_rate), wholesaleRate:Number(p.wholesale_rate), pieces:Number(p.pieces_per_carton), alert:Number(p.low_stock_threshold), stock_cartons:Number(p.stock_cartons), active:p.active!==false};
     });
     db.purchases = []; db.sales = [];
-    
+
     (results[1].data || []).forEach(function(t) {
       var p = db.products.find(function(x) { return x.id === t.product_id; });
       var pName = p ? p.name : 'Product';
@@ -196,9 +232,9 @@ async function loadCloud() {
       if(t.type === 'purchase') db.purchases.push(item);
       else db.sales.push(item);
     });
-    
+
     $('syncStatus').textContent = 'Cloud synced · ' + new Date().toLocaleTimeString();
-    refreshSelectors(); renderHome(); renderProducts(); renderStock(); renderHistory(); renderReports(); applyRoleUI();
+    refreshSelectors(); renderHome(); renderProducts(); renderStock(); renderHistory(); renderReports(); renderCustomers(); applyRoleUI();
   } catch(e) {
     $('syncStatus').textContent = 'Sync error';
     console.error(e);
@@ -283,6 +319,7 @@ function tab(id) {
   if(id==='history') renderHistory();
   if(id==='reports') renderReports();
   if(id==='purchase'||id==='sales') refreshSelectors();
+  if(id==='khata') renderCustomers();
 }
 document.querySelectorAll('nav button').forEach(function(b) { b.onclick = function() { tab(b.dataset.tab); }; });
 
@@ -295,6 +332,7 @@ function refreshSelectors() {
     if(product(old) && product(old).active) $(id).value = old;
   });
   fillPurchase(); fillSales();
+  refreshCustomerSelectors();
 }
 
 function fillPurchase() { var p = product($('purchaseProduct').value); $('purchaseRate').value = p ? p.buyRate : ''; purchasePreview(); }
@@ -309,6 +347,93 @@ function purchasePreview() { var p = product($('purchaseProduct').value), c = nu
 
 function salesPreview() { var p = product($('salesProduct').value), c = num('salesQty'), pcs = num('salesPieces'), total_pcs = p ? (c * (p.pieces || 1)) + pcs : pcs, rate_per_pc = num('salesRate'), cost_per_pc = p ? (p.buyRate / (p.pieces || 1)) : 0, total = total_pcs * rate_per_pc, profit = total - (total_pcs * cost_per_pc) - num('salesExpense'); $('salesTotal').textContent = money(total); $('salesProfit').textContent = money(profit); }
 ['salesQty','salesPieces','salesRate','salesExpense'].forEach(function(id) { $(id).oninput = salesPreview; });
+
+function customerBalance(c) {
+  var balance = Number(c.opening_balance || 0);
+  db.customerLedger.filter(function(x){ return x.customer_id === c.id; }).forEach(function(x){
+    if(x.entry_type === 'sale' || x.entry_type === 'adjustment') balance += Number(x.amount || 0);
+    if(x.entry_type === 'payment') balance -= Number(x.amount || 0);
+  });
+  return balance;
+}
+function refreshCustomerSelectors() {
+  var opts = db.customers.map(function(c){
+    return '<option value="'+c.id+'">'+esc(c.name)+' · Due '+money(customerBalance(c))+'</option>';
+  }).join('');
+  $('paymentCustomer').innerHTML = opts || '<option value="">Add customer first</option>';
+  $('saleCustomer').innerHTML = opts || '<option value="">Add customer first</option>';
+}
+function renderCustomers() {
+  refreshCustomerSelectors();
+  if(!db.customers.length) {
+    $('customerList').innerHTML = '<div class="empty">No customers yet. Add a customer above.</div>';
+    return;
+  }
+  $('customerList').innerHTML = db.customers.map(function(c){
+    var due = customerBalance(c);
+    return '<div class="card"><div class="row"><b>'+esc(c.name)+'</b><span class="'+(due>0?'red':'green')+'">'+money(due)+'</span></div>'+
+      '<div class="muted">'+esc(c.phone || 'No phone')+(c.address?' · '+esc(c.address):'')+'</div>'+
+      '<button class="soft" style="margin-top:10px" onclick="viewCustomerLedger(\''+c.id+'\')">VIEW LEDGER</button></div>';
+  }).join('');
+}
+window.viewCustomerLedger = function(id) {
+  var c = db.customers.find(function(x){ return x.id === id; });
+  if(!c) return;
+  var entries = db.customerLedger.filter(function(x){ return x.customer_id === id; }).sort(function(a,b){ return new Date(b.created_at)-new Date(a.created_at); });
+  var sales = entries.filter(function(x){ return x.entry_type==='sale'; }).reduce(function(s,x){ return s+Number(x.amount||0); },0);
+  var payments = entries.filter(function(x){ return x.entry_type==='payment'; }).reduce(function(s,x){ return s+Number(x.amount||0); },0);
+  $('ledgerCustomerName').textContent = c.name + ' · Ledger';
+  $('ledgerDue').textContent = money(customerBalance(c));
+  $('ledgerSales').textContent = money(sales);
+  $('ledgerPayments').textContent = money(payments);
+  $('ledgerEntries').innerHTML = (Number(c.opening_balance||0)>0 ? '<div class="card"><div class="row"><b>Opening balance</b><b>'+money(c.opening_balance)+'</b></div></div>' : '') +
+    (entries.length ? entries.map(function(x){
+      var label = x.entry_type==='sale'?'Credit sale':x.entry_type==='payment'?'Payment received':'Adjustment';
+      var sign = x.entry_type==='payment'?'−':'+';
+      return '<div class="card"><div class="row"><b>'+label+'</b><b class="'+(x.entry_type==='payment'?'green':'red')+'">'+sign+money(x.amount)+'</b></div>'+
+        '<div class="muted">'+new Date(x.created_at).toLocaleString('en-IN')+' · '+esc(x.payment_method||'')+'</div>'+
+        (x.note?'<div class="muted">'+esc(x.note)+'</div>':'')+'</div>';
+    }).join('') : '<div class="empty">No ledger entries yet.</div>');
+  $('customerLedgerPanel').classList.remove('hidden');
+};
+$('closeCustomerLedger').onclick = function(){ $('customerLedgerPanel').classList.add('hidden'); };
+$('addCustomer').onclick = async function(){
+  try {
+    await requireUser();
+    var name = $('custName').value.trim();
+    if(!name) throw new Error('Enter customer name.');
+    var opening = Number($('custOpening').value || 0);
+    if(opening < 0) throw new Error('Opening balance cannot be negative.');
+    var res = await sb.from('customers').insert({
+      name:name, phone:$('custPhone').value.trim() || null,
+      address:$('custAddress').value.trim() || null,
+      opening_balance:opening, created_by:session.user.id
+    });
+    if(res.error) throw res.error;
+    $('custName').value=''; $('custPhone').value=''; $('custAddress').value=''; $('custOpening').value='0';
+    await loadCloud(); showAlert('Customer saved.');
+  } catch(e){ showAlert(e.message || String(e)); }
+};
+$('saveCustomerPayment').onclick = async function(){
+  try {
+    await requireUser();
+    var cid = $('paymentCustomer').value, amount = Number($('paymentAmount').value);
+    if(!cid) throw new Error('Select a customer.');
+    if(!(amount > 0)) throw new Error('Enter a valid payment amount.');
+    var res = await sb.from('customer_ledger').insert({
+      customer_id:cid, entry_type:'payment', amount:amount,
+      payment_method:$('paymentMethod').value,
+      note:$('paymentNote').value.trim() || null, created_by:session.user.id
+    });
+    if(res.error) throw res.error;
+    $('paymentAmount').value=''; $('paymentNote').value='';
+    await loadCloud(); showAlert('Customer payment saved.');
+  } catch(e){ showAlert(e.message || String(e)); }
+};
+
+$('salesPayment').onchange = function(){
+  $('creditCustomerWrap').classList.toggle('hidden', $('salesPayment').value !== 'Credit / Due');
+};
 
 $('saveProduct').onclick = async function() {
   try {
@@ -345,9 +470,7 @@ function renderProducts() {
     html += '</div>';
     return html;
   }).join('');
-}
-
-window.openEditRates = function(id) {
+}window.openEditRates = function(id) {
   if(!isAdmin()) return;
   var p = product(id);
   if(!p) return;
@@ -407,12 +530,39 @@ $('saveSale').onclick = async function() {
     if(q <= 0) throw new Error('Enter a valid quantity.');
     var rate_per_pc = num('salesRate'), channel = $('salesChannel').value.toLowerCase(), db_rate = rate_per_pc * (p.pieces || 1);
     var noteVal = $('salesNote').value, expenseVal = num('salesExpense');
+    var isCredit = $('salesPayment').value === 'Credit / Due';
+    var customerId = isCredit ? $('saleCustomer').value : null;
+    if(isCredit && !customerId) throw new Error('Select a customer for credit sale.');
+    var totalPieces = (c * (p.pieces || 1)) + pcs;
+    var saleAmount = totalPieces * rate_per_pc;
+    var receivedNow = isCredit ? Number($('saleReceivedNow').value || 0) : 0;
+    if(receivedNow < 0 || receivedNow > saleAmount) throw new Error('Received amount cannot exceed sale total.');
     var note = [pcs>0 ? (noteVal ? noteVal + ' | ' + pcs + ' loose pieces' : pcs + ' loose pieces') : noteVal, expenseVal ? 'Other expenses: ' + expenseVal : null].filter(Boolean).join(' | ') || null;
-    var res = await sb.from('transactions').insert({product_id:p.id, type:'sale', channel:channel, qty_cartons:q, rate:db_rate, expense:expenseVal, payment:$('salesPayment').value, note:note, created_at:new Date($('salesDate').value+'T12:00:00').toISOString()});
+    var res = await sb.from('transactions').insert({
+      product_id:p.id, type:'sale', channel:channel, qty_cartons:q, rate:db_rate,
+      expense:expenseVal, payment:$('salesPayment').value, note:note,
+      created_at:new Date($('salesDate').value+'T12:00:00').toISOString()
+    }).select('id,total').single();
     if(res.error) throw res.error;
-    $('salesNote').value = ''; $('salesQty').value = '1'; $('salesPieces').value = '0'; $('salesExpense').value = '0';
+    if(isCredit) {
+      var led = await sb.from('customer_ledger').insert({
+        customer_id:customerId, transaction_id:res.data.id, entry_type:'sale',
+        amount:saleAmount, note:'Credit sale: '+p.name, created_by:session.user.id
+      });
+      if(led.error) throw new Error('Sale saved, but customer ledger update failed: '+led.error.message);
+      if(receivedNow > 0) {
+        var pay = await sb.from('customer_ledger').insert({
+          customer_id:customerId, transaction_id:res.data.id, entry_type:'payment',
+          amount:receivedNow, payment_method:'Received at sale',
+          note:'Part payment: '+p.name, created_by:session.user.id
+        });
+        if(pay.error) throw new Error('Sale saved, but received payment could not be recorded: '+pay.error.message);
+      }
+    }
+    $('salesNote').value = ''; $('salesQty').value = '1'; $('salesPieces').value = '0';
+    $('salesExpense').value = '0'; $('saleReceivedNow').value = '0';
     await loadCloud();
-    showAlert('Sale saved. Shared stock reduced.');
+    showAlert(isCredit ? 'Credit sale and customer balance saved.' : 'Sale saved. Shared stock reduced.');
     tab('home');
   } catch(e) { showAlert(e.message||e) }
 };
@@ -440,7 +590,7 @@ function renderHome() {
   db.purchases.forEach(function(x) { buy += x.total; });
   db.sales.forEach(function(x) { sales += x.total; profit += x.netProfit; });
   db.products.filter(function(p) { return p.active; }).forEach(function(p) { var q = stock(p); qty += q; value += q * p.buyRate; });
-  
+
   $('stockValue').textContent = money(value);
   $('countProducts').textContent = db.products.filter(function(p) { return p.active; }).length;
   $('countStock').textContent = qty.toFixed(2);
@@ -448,11 +598,11 @@ function renderHome() {
   $('totalSales').textContent = money(sales);
   $('totalProfit').textContent = money(profit);
   $('lowStock').textContent = db.products.filter(function(p) { return p.active && stock(p) <= p.alert; }).length;
-  
+
   var recent = db.purchases.map(function(x) { return Object.assign({}, x, {type:'Purchase'}); })
     .concat(db.sales.map(function(x) { return Object.assign({}, x, {type:'Sale'}); }))
     .sort(function(a,b) { return b.created - a.created; }).slice(0,5);
-    
+
   if(!recent.length) {
     $('recent').innerHTML = '<div class="empty">No activity yet. Add a product, then record a purchase.</div>';
     return;
@@ -470,7 +620,7 @@ function renderHistory() {
     .concat(db.sales.map(function(x) { return Object.assign({}, x, {type:'Sale'}); }))
     .sort(function(a,b) { return b.created - a.created; });
   if(f !== 'all') all = all.filter(function(x) { return x.type.toLowerCase() === f; });
-  
+
   if(!all.length) {
     $('historyList').innerHTML = '<div class="empty">No transactions found.</div>';
     return;
@@ -490,7 +640,7 @@ function renderReports() {
   var pb=0, ss=0, pr=0;
   p.forEach(function(x) { pb += x.total; });
   s.forEach(function(x) { ss += x.total; pr += x.netProfit; });
-  
+
   $('reportResult').innerHTML = '<div class="row"><span>Purchases</span><b>'+money(pb)+'</b></div>' +
     '<div class="row"><span>Sales</span><b>'+money(ss)+'</b></div>' +
     '<div class="row"><span>Net profit</span><b class="green">'+money(pr)+'</b></div>' +
