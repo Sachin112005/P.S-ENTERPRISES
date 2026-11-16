@@ -2,9 +2,11 @@
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0B2E1F"><meta name="description" content="P.S ENTERPRISES inventory and business manager">
-<link rel="manifest" href="manifest.webmanifest"><title>P.S ENTERPRISES</title>
+<link rel="manifest" href="manifest.webmanifest"><title>P.S ENTERPRISES · Version 6</title>
 <!-- CDN Link for Supabase -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 :root{--ink:#17243a;--muted:#778397;--navy:#0B2E1F;--blue:#0B2E1F;--blue2:#e6f4ea;--green:#16a34a;--red:#c04b4b;--bg:#f4f9f6;--line:#e0e9e4;--shadow:0 8px 28px rgba(11,46,31,.06)}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -58,7 +60,7 @@ hr{border:0;border-top:1px solid var(--line);margin:12px 0}footer{text-align:cen
 
 <header><div class="top"><div><div class="brand">P.S ENTERPRISES</div><div class="tag">INVENTORY & BUSINESS MANAGER</div></div><div class="userbar"><div class="date" id="today"></div><button class="soft" id="logoutBtn">Log out</button></div></div><div class="hero"><small>Current stock value</small><strong id="stockValue">₹0</strong><span class="muted" style="color:#c4d2e8">Cloud inventory overview</span><div id="syncStatus">Not connected</div></div></header>
 
-<nav><button class="active" data-tab="home">Overview</button><button data-tab="products">Products</button><button data-tab="purchase">Purchase</button><button data-tab="sales">Sales</button><button data-tab="stock">Stock</button><button data-tab="history">History</button><button data-tab="reports">Reports</button><button data-tab="gst">GST</button><button data-tab="khata">Customer Khata</button></nav>
+<nav><button class="active" data-tab="home">Overview</button><button data-tab="products">Products</button><button data-tab="purchase">Purchase</button><button data-tab="sales">Sales</button><button data-tab="stock">Stock</button><button data-tab="history">History</button><button data-tab="reports">Reports</button><button data-tab="gst">GST</button><button data-tab="khata">Customer Khata</button><button data-tab="tools">Business Tools</button></nav>
 
 <main>
 <section id="home"><h2>Business Overview</h2><div class="grid">
@@ -104,9 +106,68 @@ hr{border:0;border-top:1px solid var(--line);margin:12px 0}footer{text-align:cen
 
 <section id="stock" class="hidden"><h2>Live Stock</h2><p class="note">Stock increases with purchases and decreases with sales.</p><div id="stockList"></div></section>
 
-<section id="history" class="hidden"><h2>Transaction History</h2><div class="row"><select id="historyFilter"><option value="all">All transactions</option><option value="purchase">Purchases</option><option value="sale">Sales</option></select><button class="soft" id="exportCsv">Export CSV</button></div><div id="historyList" style="margin-top:10px"></div><div class="row"><button class="soft" id="backup">Download Backup</button><button class="soft hidden" id="restoreBtn">Restore Backup</button></div><input type="file" id="restoreFile" accept=".json" class="hidden"></section>
+<section id="history" class="hidden"><h2>Transaction History</h2><div class="row"><input id="historySearch" placeholder="Search product / bill / note"><select id="historyFilter"><option value="all">All transactions</option><option value="purchase">Purchases</option><option value="sale">Sales</option></select><button class="soft" id="exportCsv">Export CSV</button></div><div id="historyList" style="margin-top:10px"></div><div class="row"><button class="soft" id="backup">Download Backup</button><button class="soft hidden" id="restoreBtn">Restore Backup</button></div><input type="file" id="restoreFile" accept=".json" class="hidden"></section>
 
 <section id="reports" class="hidden"><h2>Monthly Reports</h2><div class="panel"><label>Select month</label><input type="month" id="reportMonth"><div id="reportResult" style="margin-top:13px"></div></div></section>
+
+
+<section id="tools" class="hidden">
+<h2>Business Tools</h2>
+<div class="panel">
+<h2>Bill Search & PDF</h2>
+<label>Search by Bill Number, Product, Customer, Supplier or Note</label>
+<input id="billSearch" placeholder="e.g. BILL-123 or Rajnigandha">
+<button class="soft" id="runBillSearch">SEARCH BILLS</button>
+<div id="billSearchResults"></div>
+</div>
+<div class="panel">
+<h2>Cash Book & Expenses</h2>
+<div class="grid">
+<div><label>Entry type</label><select id="cashEntryType"><option value="cash_in">Cash In</option><option value="cash_out">Cash Out / Expense</option></select></div>
+<div><label>Amount (₹)</label><input id="cashEntryAmount" type="number" min="0.01" step="any"></div>
+</div>
+<label>Payment method</label><select id="cashEntryMethod"><option>Cash</option><option>UPI</option><option>Bank transfer</option></select>
+<label>Category</label><select id="cashEntryCategory"><option>General</option><option>Shop Rent</option><option>Transport</option><option>Electricity</option><option>Staff Salary</option><option>Repair</option><option>Other Expense</option></select>
+<label>Note</label><input id="cashEntryNote" placeholder="Description / reference">
+<button class="primary" id="saveCashEntry">SAVE CASH BOOK ENTRY</button>
+<div class="grid" style="margin-top:12px">
+<div class="card"><div class="k">CASH BALANCE</div><div class="v" id="cashBalance">₹0</div></div>
+<div class="card"><div class="k">UPI BALANCE</div><div class="v" id="upiBalance">₹0</div></div>
+<div class="card"><div class="k">BANK BALANCE</div><div class="v" id="bankBalance">₹0</div></div>
+</div>
+<div id="cashBookList"></div>
+</div>
+<div class="panel">
+<h2>Daily Closing</h2>
+<label>Opening Cash (₹)</label><input id="closingOpening" type="number" min="0" value="0">
+<label>Actual Cash in Drawer (₹)</label><input id="closingActual" type="number" min="0" value="0">
+<label>Closing Note</label><input id="closingNote" placeholder="Optional">
+<button class="primary" id="saveDailyClosing">SAVE DAILY CLOSING</button>
+<div id="closingResult"></div>
+</div>
+<div class="panel">
+<h2>Stock Adjustment / Damaged Stock</h2>
+<label>Product</label><select id="adjustProduct"></select>
+<label>Adjustment type</label><select id="adjustType"><option value="add">Add Stock</option><option value="remove">Remove Stock</option><option value="damage">Damaged Stock</option></select>
+<div class="grid"><div><label>Cartons</label><input id="adjustCartons" type="number" min="0" step="any" value="0"></div><div><label>Loose Pieces</label><input id="adjustPieces" type="number" min="0" step="any" value="0"></div></div>
+<label>Reason</label><input id="adjustNote" placeholder="Reason for stock adjustment">
+<button class="primary" id="saveStockAdjustment">SAVE STOCK ADJUSTMENT</button>
+<p class="muted">Adjustment changes the product's live stock quantity. Keep the reason for audit.</p>
+</div>
+<div class="panel">
+<h2>Barcode / Quick Product Search</h2>
+<label>Scan or enter barcode / product name</label><input id="barcodeSearch" placeholder="Use a USB/Bluetooth barcode scanner or type">
+<div id="barcodeResult"></div>
+<p class="muted">A scanner that types into the input field is supported. Camera scanning depends on browser camera permissions and device support.</p>
+</div>
+<div class="panel">
+<h2>Export & Backup</h2>
+<button class="soft" id="exportExcel">EXPORT EXCEL WORKBOOK</button>
+<button class="soft" id="cloudBackup">DOWNLOAD CLOUD DATA BACKUP</button>
+<button class="soft" id="printRecentBill">PRINT LAST SALES BILL</button>
+<div id="toolsMessage" class="muted"></div>
+</div>
+</section>
 
 <section id="gst" class="hidden"><h2>GST Estimate</h2><div class="notice">Reference calculator only. Verify HSN and current applicable rate. It does not file GST returns or determine legal tax liability. Do not claim ITC without a valid tax invoice.</div><div class="panel"><label>Amount (₹)</label><input id="gstAmount" type="number" value="66900"><label>GST rate (%)</label><input id="gstRate" type="number" value="0"><label>Amount type</label><select id="gstMode"><option value="inclusive">GST included</option><option value="exclusive">GST extra</option></select><div class="row" style="margin-top:15px"><span>Estimated GST</span><b id="gstTax">₹0</b></div><div class="row"><span>Taxable value</span><b id="gstBase">₹66,900</b></div><div class="row"><span>Total amount</span><b id="gstTotal">₹66,900</b></div></div></section>
 
@@ -244,6 +305,7 @@ async function loadCloud() {
     
     $('syncStatus').textContent = 'Cloud synced · ' + new Date().toLocaleTimeString();
     refreshSelectors(); renderHome(); renderProducts(); renderStock(); renderHistory(); renderReports(); renderCustomers(); applyRoleUI();
+    var ap=$('adjustProduct'); if(ap) ap.innerHTML=db.products.filter(function(p){return p.active;}).map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>';}).join('');
   } catch(e) {
     $('syncStatus').textContent = 'Sync error';
     console.error(e);
@@ -330,6 +392,7 @@ function tab(id) {
   if(id==='purchase'||id==='sales') refreshSelectors();
   if(id==='sales') updateSaleCustomerUI();
   if(id==='khata') renderCustomers();
+  if(id==='tools') loadBusinessTools();
 }
 document.querySelectorAll('nav button').forEach(function(b) { b.onclick = function() { tab(b.dataset.tab); }; });
 
@@ -377,25 +440,38 @@ function renderCustomers() {
   }).join('');
 }
 window.viewCustomerLedger = function(id) {
-  var c = db.customers.find(function(x){ return x.id === id; });
-  if(!c) return;
-  var entries = db.customerLedger.filter(function(x){ return x.customer_id === id; }).sort(function(a,b){ return new Date(b.created_at)-new Date(a.created_at); });
-  var sales = entries.filter(function(x){ return x.entry_type==='sale'; }).reduce(function(s,x){ return s+Number(x.amount||0); },0);
-  var payments = entries.filter(function(x){ return x.entry_type==='payment'; }).reduce(function(s,x){ return s+Number(x.amount||0); },0);
-  $('ledgerCustomerName').textContent = c.name + ' · Ledger';
-  $('ledgerDue').textContent = money(customerBalance(c));
-  $('ledgerSales').textContent = money(sales);
-  $('ledgerPayments').textContent = money(payments);
-  $('ledgerEntries').innerHTML = (Number(c.opening_balance||0)>0 ? '<div class="card"><div class="row"><b>Opening balance</b><b>'+money(c.opening_balance)+'</b></div></div>' : '') +
-    (entries.length ? entries.map(function(x){
-      var label = x.entry_type==='sale'?'Credit sale':x.entry_type==='payment'?'Payment received':'Adjustment';
-      var sign = x.entry_type==='payment'?'−':'+';
-      return '<div class="card"><div class="row"><b>'+label+'</b><b class="'+(x.entry_type==='payment'?'green':'red')+'">'+sign+money(x.amount)+'</b></div>'+
-        '<div class="muted">'+new Date(x.created_at).toLocaleString('en-IN')+' · '+esc(x.payment_method||'')+'</div>'+
-        (x.note?'<div class="muted">'+esc(x.note)+'</div>':'')+'</div>';
-    }).join('') : '<div class="empty">No ledger entries yet.</div>');
+  var c=db.customers.find(function(x){return x.id===id;}); if(!c)return;
+  var entries=db.customerLedger.filter(function(x){return x.customer_id===id;}).sort(function(a,b){return new Date(b.created_at)-new Date(a.created_at);});
+  var sales=entries.filter(function(x){return x.entry_type==='sale';}).reduce(function(a,x){return a+Number(x.amount||0);},0);
+  var payments=entries.filter(function(x){return x.entry_type==='payment';}).reduce(function(a,x){return a+Number(x.amount||0);},0);
+  $('ledgerCustomerName').textContent=c.name+' · Ledger'; $('ledgerDue').textContent=money(customerBalance(c));
+  $('ledgerSales').textContent=money(sales); $('ledgerPayments').textContent=money(payments);
+  var groups={},singles=[];
+  entries.forEach(function(x){var m=String(x.note||'').match(/BILL-\d+/);if(m)(groups[m[0]]||(groups[m[0]]=[])).push(x);else singles.push(x);});
+  var cards=[];
+  Object.keys(groups).forEach(function(ref){
+    var g=groups[ref],st=g.filter(function(x){return x.entry_type==='sale';}).reduce(function(a,x){return a+Number(x.amount||0);},0);
+    var paid=g.filter(function(x){return x.entry_type==='payment';}).reduce(function(a,x){return a+Number(x.amount||0);},0);
+    cards.push({time:new Date(g[0].created_at).getTime(),html:'<div class="card"><div class="row"><b>Sales Bill · '+esc(ref)+'</b><b>'+money(st)+'</b></div><div class="muted">'+new Date(g[0].created_at).toLocaleString('en-IN')+'</div><div class="row" style="margin-top:8px"><span class="green">Paid '+money(paid)+'</span><span class="'+(st>paid?'red':'green')+'">Due '+money(st-paid)+'</span></div><button class="soft" style="margin-top:10px" onclick="printCustomerBill(\''+ref+'\',\''+c.id+'\')">GENERATE BILL PDF</button></div>'});
+  });
+  singles.forEach(function(x){var label=x.entry_type==='sale'?'Credit sale':x.entry_type==='payment'?'Payment received':'Adjustment',sign=x.entry_type==='payment'?'−':'+';cards.push({time:new Date(x.created_at).getTime(),html:'<div class="card"><div class="row"><b>'+label+'</b><b class="'+(x.entry_type==='payment'?'green':'red')+'">'+sign+money(x.amount)+'</b></div><div class="muted">'+new Date(x.created_at).toLocaleString('en-IN')+' · '+esc(x.payment_method||'')+'</div>'+(x.note?'<div class="muted">'+esc(x.note)+'</div>':'')+'</div>'});});
+  cards.sort(function(a,b){return b.time-a.time;});
+  $('ledgerEntries').innerHTML=(Number(c.opening_balance||0)>0?'<div class="card"><b>Opening balance</b> '+money(c.opening_balance)+'</div>':'')+(cards.length?cards.map(function(x){return x.html;}).join(''):'<div class="empty">No ledger entries yet.</div>');
   $('customerLedgerPanel').classList.remove('hidden');
 };
+window.printCustomerBill=function(ref,cid){
+  var c=db.customers.find(function(x){return String(x.id)===String(cid);});if(!c)return;
+  var tx=db.sales.filter(function(x){return String(x.note||'').indexOf('BillRef: '+ref)>=0;});
+  if(!tx.length){showAlert('Bill details not found.');return;}
+  var rows=tx.map(function(x){return '<tr><td>'+esc(x.product)+'</td><td>'+Number(x.qty||0).toFixed(2)+'</td><td>'+money(x.rate)+'</td><td>'+money(x.total)+'</td></tr>';}).join('');
+  var total=tx.reduce(function(a,x){return a+Number(x.total||0);},0);
+  var led=db.customerLedger.filter(function(x){return String(x.note||'').indexOf(ref)>=0;});
+  var paid=led.filter(function(x){return x.entry_type==='payment';}).reduce(function(a,x){return a+Number(x.amount||0);},0);
+  var w=window.open('','_blank');if(!w){showAlert('Allow pop-ups to generate PDF.');return;}
+  w.document.write('<!doctype html><html><head><title>'+esc(ref)+'</title><style>body{font:14px Arial;padding:28px;color:#17243a}h1{color:#0B2E1F}table{width:100%;border-collapse:collapse;margin-top:24px}th,td{padding:10px;border-bottom:1px solid #ddd;text-align:left}th{background:#eef5ef}.sum{margin:24px 0 0 auto;width:250px}.sum div{display:flex;justify-content:space-between;padding:8px;border-bottom:1px solid #ddd}</style></head><body><h1>P.S ENTERPRISES</h1><h2>Sales Invoice</h2><p><b>Bill:</b> '+esc(ref)+'<br><b>Customer:</b> '+esc(c.name)+'<br><b>Date:</b> '+new Date(tx[0].created).toLocaleString('en-IN')+'</p><table><thead><tr><th>Product</th><th>Qty (cartons)</th><th>Rate/carton</th><th>Total</th></tr></thead><tbody>'+rows+'</tbody></table><div class="sum"><div><b>Bill Total</b><b>'+money(total)+'</b></div><div><span>Paid</span><b>'+money(paid)+'</b></div><div><span>Balance</span><b>'+money(total-paid)+'</b></div></div><script>window.onload=function(){window.print();};<\\/script></body></html>');
+  w.document.close();
+};
+
 $('closeCustomerLedger').onclick = function(){ $('customerLedgerPanel').classList.add('hidden'); };
 $('addCustomer').onclick = async function(){
   try {
@@ -679,16 +755,17 @@ $('saveSale').onclick = async function(){
   if(received<0||received>billTotal)throw new Error('Received amount cannot exceed bill total.');
   if(mode==='Credit / Due'&&received!==0)throw new Error('For full credit, amount received now must be 0.');
   var cname=registered?((db.customers.find(function(x){return x.id===cid;})||{}).name||''):'',remaining=received;
+  var billRef='BILL-'+Date.now();
   $('saveSale').disabled=true;
   for(var i=0;i<items.length;i++){
-   var it=items[i],lineExpense=expense*(it.total/billTotal),note=[registered?'Customer: '+cname:'Walk-in / Unregistered Customer',$('salesNote').value.trim()?'Bill: '+$('salesNote').value.trim():null,'Item '+(i+1)+'/'+items.length].filter(Boolean).join(' | ');
+   var it=items[i],lineExpense=expense*(it.total/billTotal),note=['BillRef: '+billRef,registered?'Customer: '+cname:'Walk-in / Unregistered Customer',$('salesNote').value.trim()?'Bill: '+$('salesNote').value.trim():null,'Item '+(i+1)+'/'+items.length].filter(Boolean).join(' | ');
    var res=await sb.from('transactions').insert({product_id:it.product.id,type:'sale',channel:$('salesChannel').value.toLowerCase(),qty_cartons:it.qty,rate:it.rate*(it.product.pieces||1),expense:lineExpense,payment:mode,note:note,created_at:new Date($('salesDate').value+'T12:00:00').toISOString()}).select('id,total').single();
    if(res.error)throw new Error('Saved '+savedCount+' of '+items.length+' items. '+res.error.message);savedCount++;
    if(registered){
-    var actual=Number(res.data.total||it.total),led=await sb.from('customer_ledger').insert({customer_id:cid,transaction_id:res.data.id,entry_type:'sale',amount:actual,note:'Sale: '+it.product.name,created_by:session.user.id});
+    var actual=Number(res.data.total||it.total),led=await sb.from('customer_ledger').insert({customer_id:cid,transaction_id:res.data.id,entry_type:'sale',amount:actual,note:'['+billRef+'] Sale: '+it.product.name,created_by:session.user.id});
     if(led.error)throw new Error('Sale saved but customer ledger failed: '+led.error.message);
     var alloc=Math.min(remaining,actual);remaining-=alloc;
-    if(alloc>0){var pay=await sb.from('customer_ledger').insert({customer_id:cid,transaction_id:res.data.id,entry_type:'payment',amount:alloc,payment_method:mode==='Credit / Due'?'Not received':mode,note:(isCredit?'Part payment: ':'Sale payment: ')+it.product.name,created_by:session.user.id});if(pay.error)throw new Error('Sale saved but payment ledger failed: '+pay.error.message);}
+    if(alloc>0){var pay=await sb.from('customer_ledger').insert({customer_id:cid,transaction_id:res.data.id,entry_type:'payment',amount:alloc,payment_method:mode==='Credit / Due'?'Not received':mode,note:'['+billRef+'] '+(isCredit?'Part payment: ':'Sale payment: ')+it.product.name,created_by:session.user.id});if(pay.error)throw new Error('Sale saved but payment ledger failed: '+pay.error.message);}
    }
   }
   $('salesNote').value='';$('salesExpense').value='0';$('saleReceivedNow').value='0';$('saleItems').innerHTML='';addSaleItemRow();$('salesPayment').value='Cash';updateSaleCustomerUI();
@@ -745,11 +822,11 @@ function renderHome() {
 }
 
 function renderHistory() {
-  var f = $('historyFilter').value;
+  var f = $('historyFilter').value;\n  var q = $('historySearch') ? $('historySearch').value.trim().toLowerCase() : '';
   var all = db.purchases.map(function(x) { return Object.assign({}, x, {type:'Purchase'}); })
     .concat(db.sales.map(function(x) { return Object.assign({}, x, {type:'Sale'}); }))
     .sort(function(a,b) { return b.created - a.created; });
-  if(f !== 'all') all = all.filter(function(x) { return x.type.toLowerCase() === f; });
+  if(f !== 'all') all = all.filter(function(x) { return x.type.toLowerCase() === f; });\n  if(q) all = all.filter(function(x){return [x.product,x.note,x.date,x.payment].join(' ').toLowerCase().indexOf(q)>=0;});
   
   if(!all.length) {
     $('historyList').innerHTML = '<div class="empty">No transactions found.</div>';
@@ -761,7 +838,7 @@ function renderHistory() {
            '<div class="row" style="margin-top:8px"><span>'+money(x.total)+'</span><span class="'+(x.type==='Sale'?'green':'')+'">'+(x.type==='Sale'?'Net profit '+money(x.netProfit):'Purchase')+'</span></div></div>';
   }).join('');
 }
-$('historyFilter').onchange = renderHistory;
+$('historyFilter').onchange = renderHistory;\nif($('historySearch')) $('historySearch').oninput = renderHistory;
 
 function renderReports() {
   var m = $('reportMonth').value || today.slice(0,7);
@@ -1003,6 +1080,111 @@ setInterval(function() { if(session) loadCloud(); }, 12000);
     loadSuppliers();
   });
 })();
+
+// Version 6 business tools. Uses the existing Supabase tables created for P.S ENTERPRISES.
+var v6CashEntries = [], v6Closings = [], v6LastSalePrint = null;
+function v6BillRef(note) { var m=String(note||'').match(/BILL[-:]?([A-Za-z0-9-]+)/i); return m ? m[0] : ''; }
+function v6SearchBills() {
+  var q=String($('billSearch').value||'').trim().toLowerCase();
+  var all=db.purchases.map(function(x){return Object.assign({},x,{kind:'Purchase'});}).concat(db.sales.map(function(x){return Object.assign({},x,{kind:'Sale'});}));
+  if(q) all=all.filter(function(x){return [x.product,x.note,x.payment,x.date,v6BillRef(x.note)].join(' ').toLowerCase().indexOf(q)>=0;});
+  var grouped={};
+  all.forEach(function(x){
+    var ref=v6BillRef(x.note)||('TXN-'+String(x.id).slice(0,8));
+    if(!grouped[ref]) grouped[ref]={ref:ref,kind:x.kind,date:x.date,rows:[],total:0};
+    grouped[ref].rows.push(x); grouped[ref].total+=Number(x.total||0);
+  });
+  var bills=Object.keys(grouped).map(function(k){return grouped[k];}).sort(function(a,b){return b.date.localeCompare(a.date);});
+  $('billSearchResults').innerHTML=bills.length?bills.map(function(b,i){
+    return '<div class="card"><div class="row"><b>'+esc(b.ref)+'</b><span class="pill">'+b.kind+'</span></div><div class="muted">'+esc(b.date)+' · '+b.rows.length+' item(s)</div><div class="row"><b>'+money(b.total)+'</b><button class="soft" onclick="v6DownloadBill('+i+')">PDF / PRINT</button></div></div>';
+  }).join(''):'<div class="empty">No matching bills.</div>';
+  window.v6FoundBills=bills;
+}
+window.v6DownloadBill=function(i){
+  var b=(window.v6FoundBills||[])[i]; if(!b)return;
+  var lines=b.rows.map(function(x){return {product:{name:x.product},pieces:Math.round(x.qty*60),rate:x.rate,total:x.total};});
+  v6CreatePdf(b.ref,b.kind,b.date,lines,b.total,'');
+};
+function v6CreatePdf(ref,kind,date,items,total,party){
+  if(!window.jspdf||!window.jspdf.jsPDF){showAlert('PDF library unavailable. Check internet and refresh.');return;}
+  var d=new window.jspdf.jsPDF(),y=18;
+  d.setFontSize(18);d.text('P.S ENTERPRISES',14,y);y+=8;d.setFontSize(11);d.text(kind.toUpperCase()+' INVOICE',14,y);y+=8;
+  d.setFontSize(9);d.text('Bill No: '+ref,14,y);y+=6;d.text('Date: '+date,14,y);y+=6;if(party){d.text('Party: '+party,14,y);y+=6;}
+  y+=4;d.text('Product',14,y);d.text('Qty',110,y);d.text('Amount',196,y,{align:'right'});y+=5;d.line(14,y,196,y);y+=7;
+  items.forEach(function(it){var nm=String(it.product.name||'Product');var ls=d.splitTextToSize(nm,85);d.text(ls,14,y);d.text(String(it.pieces||''),110,y);d.text(money(it.total),196,y,{align:'right'});y+=Math.max(7,ls.length*5);if(y>270){d.addPage();y=18;}});
+  y+=4;d.line(14,y,196,y);y+=8;d.setFontSize(12);d.text('Total: '+money(total),196,y,{align:'right'});
+  d.save('PS-ENTERPRISES-'+ref+'.pdf');
+};
+$('runBillSearch').onclick=v6SearchBills;
+$('billSearch').addEventListener('keydown',function(e){if(e.key==='Enter')v6SearchBills();});
+$('barcodeSearch').addEventListener('input',function(){
+  var q=this.value.trim().toLowerCase(),p=db.products.find(function(x){return x.name.toLowerCase()===q||String(x.barcode||'').toLowerCase()===q;});
+  $('barcodeResult').innerHTML=p?'<div class="card"><b>'+esc(p.name)+'</b><div class="muted">'+stock(p).toFixed(2)+' cartons · '+p.pieces+' pcs/carton</div></div>':(q?'<div class="muted">No exact product/barcode match.</div>':'');
+});
+async function loadBusinessTools(){
+  try{
+    await requireUser();
+    var r=await sb.from('cash_book_entries').select('*').order('entry_date',{ascending:false}).limit(500);
+    if(r.error)throw r.error;v6CashEntries=r.data||[];
+    var c=await sb.from('daily_closings').select('*').order('closing_date',{ascending:false}).limit(30);
+    if(c.error)throw c.error;v6Closings=c.data||[];
+    v6RenderCashBook();
+    $('adjustProduct').innerHTML=db.products.filter(function(p){return p.active;}).map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>';}).join('');
+  }catch(e){$('toolsMessage').textContent='Tools data: '+(e.message||e);}
+}
+function v6RenderCashBook(){
+  var bal={Cash:0,UPI:0,'Bank transfer':0};
+  v6CashEntries.forEach(function(x){var m=x.payment_method||'Cash';if(bal[m]===undefined)bal[m]=0;bal[m]+=(x.entry_type==='cash_in'?1:-1)*Number(x.amount||0);});
+  $('cashBalance').textContent=money(bal.Cash||0);$('upiBalance').textContent=money(bal.UPI||0);$('bankBalance').textContent=money(bal['Bank transfer']||0);
+  $('cashBookList').innerHTML=v6CashEntries.map(function(x){return '<div class="card"><div class="row"><b>'+esc(x.category||x.entry_type)+'</b><b>'+(x.entry_type==='cash_in'?'+':'−')+money(x.amount)+'</b></div><div class="muted">'+esc(x.entry_date)+' · '+esc(x.payment_method||'Cash')+' · '+esc(x.note||'')+'</div></div>';}).join('')||'<div class="empty">No cash entries yet.</div>';
+  $('closingResult').innerHTML=v6Closings.slice(0,5).map(function(x){return '<div class="card"><b>'+esc(x.closing_date)+'</b><div class="muted">Expected: '+money(x.expected_cash)+' · Actual: '+money(x.actual_cash)+' · Difference: '+money(x.difference)+'</div></div>';}).join('');
+}
+$('saveCashEntry').onclick=async function(){
+  try{await requireUser();var amt=Number($('cashEntryAmount').value||0);if(!(amt>0))throw new Error('Enter a valid amount.');
+  var r=await sb.from('cash_book_entries').insert({entry_type:$('cashEntryType').value,amount:amt,category:$('cashEntryCategory').value,payment_method:$('cashEntryMethod').value,note:$('cashEntryNote').value.trim()||null,entry_date:today,created_by:session.user.id});
+  if(r.error)throw r.error;$('cashEntryAmount').value='';$('cashEntryNote').value='';await loadBusinessTools();showAlert('Cash book entry saved.');
+  }catch(e){showAlert(e.message||e);}
+};
+$('saveDailyClosing').onclick=async function(){
+ try{await requireUser();var actual=Number($('closingActual').value||0),opening=Number($('closingOpening').value||0);
+ var todayEntries=v6CashEntries.filter(function(x){return x.entry_date===today&&x.payment_method==='Cash';});
+ var incoming=todayEntries.filter(function(x){return x.entry_type==='cash_in';}).reduce(function(a,x){return a+Number(x.amount||0);},0);
+ var outgoing=todayEntries.filter(function(x){return x.entry_type==='cash_out';}).reduce(function(a,x){return a+Number(x.amount||0);},0);
+ var expected=opening+incoming-outgoing;
+ var r=await sb.from('daily_closings').upsert({closing_date:today,opening_cash:opening,cash_in:incoming,cash_out:outgoing,expected_cash:expected,actual_cash:actual,note:$('closingNote').value||null,created_by:session.user.id},{onConflict:'closing_date,created_by'});
+ if(r.error)throw r.error;await loadBusinessTools();showAlert('Daily closing saved. Difference: '+money(actual-expected));
+ }catch(e){showAlert(e.message||e);}
+};
+$('saveStockAdjustment').onclick=async function(){
+ try{await requireUser();var p=product($('adjustProduct').value);if(!p)throw new Error('Select product.');
+ var cartons=Number($('adjustCartons').value||0),pieces=Number($('adjustPieces').value||0),delta=cartons+pieces/(p.pieces||1);
+ if(!(delta>0))throw new Error('Enter adjustment quantity.');
+ var mode=$('adjustType').value,change=mode==='add'?delta:-delta,newStock=stock(p)+change;
+ if(newStock<0)throw new Error('Adjustment cannot make stock negative.');
+ var r=await sb.from('products').update({stock_cartons:newStock}).eq('id',p.id);
+ if(r.error)throw r.error;
+ var audit=await sb.from('cash_book_entries').insert({entry_type:'cash_out',amount:0,category:mode==='damage'?'Damaged stock':'Stock adjustment',payment_method:'Cash',note:p.name+' · '+mode+' · '+delta.toFixed(3)+' cartons · '+($('adjustNote').value||''),entry_date:today,created_by:session.user.id});
+ if(audit.error)throw audit.error;
+ await loadCloud();showAlert('Stock adjusted. New stock: '+newStock.toFixed(2)+' cartons.');
+ }catch(e){showAlert(e.message||e);}
+};
+$('exportExcel').onclick=function(){
+ if(!window.XLSX){showAlert('Excel library unavailable.');return;}
+ var wb=XLSX.utils.book_new();
+ var tx=db.purchases.map(function(x){return {Type:'Purchase',Date:x.date,Product:x.product,QuantityCartons:x.qty,Rate:x.rate,Total:x.total,Payment:x.payment,Note:x.note};}).concat(db.sales.map(function(x){return {Type:'Sale',Date:x.date,Product:x.product,QuantityCartons:x.qty,Rate:x.rate,Total:x.total,Profit:x.netProfit,Payment:x.payment,Note:x.note};}));
+ XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(tx),'Transactions');
+ XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(db.products.map(function(p){return {Product:p.name,StockCartons:stock(p),PiecesPerCarton:p.pieces,PurchaseRate:p.buyRate,RetailRate:p.retailRate,WholesaleRate:p.wholesaleRate};})),'Stock');
+ XLSX.writeFile(wb,'PS-ENTERPRISES-Report.xlsx');
+};
+$('cloudBackup').onclick=async function(){
+ try{await requireUser();var results=await Promise.all([sb.from('products').select('*'),sb.from('transactions').select('*'),sb.from('customers').select('*'),sb.from('customer_ledger').select('*'),sb.from('suppliers').select('*'),sb.from('supplier_ledger').select('*'),sb.from('cash_book_entries').select('*'),sb.from('daily_closings').select('*')]);
+ var names=['products','transactions','customers','customer_ledger','suppliers','supplier_ledger','cash_book_entries','daily_closings'];
+ var obj={exported_at:new Date().toISOString()};results.forEach(function(r,i){if(r.error)throw r.error;obj[names[i]]=r.data||[];});
+ download(new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}),'PS-ENTERPRISES-cloud-backup.json');
+ }catch(e){showAlert(e.message||e);}
+};
+$('printRecentBill').onclick=function(){if(!window.lastSalesInvoice){showAlert('No last bill in this browser session. Use Bill Search.');return;}window.downloadLastSalesInvoice();};
+
 </script>
 </body>
 </html>w
