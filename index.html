@@ -210,6 +210,38 @@ hr{border:0;border-top:1px solid var(--line);margin:12px 0}footer{text-align:cen
 <footer>P.S ENTERPRISES · INVENTORY & BUSINESS LEDGER</footer></main>
 
 <script>
+// 4. Global Login Function
+window.doLogin = async function() {
+  if (!sb) {
+    $('authMessage').textContent = 'Internet issue! Supabase load nahi hua. Page refresh karein.';
+    return;
+  }
+  var email = $('loginEmail').value.trim();
+  var password = $('loginPassword').value;
+  if(!email || !password) {
+    $('authMessage').textContent = 'Enter email and password.';
+    return;
+  }
+  $('loginBtn').disabled = true;
+  $('authMessage').textContent = 'Signing in…';
+  $('authMessage').style.color = 'gray';
+  try {
+    var res = await sb.auth.signInWithPassword({email: email, password: password});
+    if(res.error) throw res.error;
+    await enterSession(res.data.session);
+  } catch(e) {
+    $('authMessage').textContent = e.message || 'Login failed.';
+    $('authMessage').style.color = 'red';
+  } finally {
+    $('loginBtn').disabled = false;
+  }
+};
+
+document.getElementById('loginBtn').addEventListener('click', function(event) {
+  event.preventDefault();
+  if (typeof window.doLogin === 'function') window.doLogin();
+});
+
 // 1. Check if Supabase loaded successfully
 window.onload = function() {
   if (typeof window.supabase === 'undefined') {
@@ -329,32 +361,6 @@ function applyRoleUI() {
   document.querySelectorAll('#productList button').forEach(function(b) { b.classList.toggle('hidden', !admin); });
 }
 
-// 4. Global Login Function
-window.doLogin = async function() {
-  if (!sb) {
-    $('authMessage').textContent = 'Internet issue! Supabase load nahi hua. Page refresh karein.';
-    return;
-  }
-  var email = $('loginEmail').value.trim();
-  var password = $('loginPassword').value;
-  if(!email || !password) {
-    $('authMessage').textContent = 'Enter email and password.';
-    return;
-  }
-  $('loginBtn').disabled = true;
-  $('authMessage').textContent = 'Signing in…';
-  $('authMessage').style.color = 'gray';
-  try {
-    var res = await sb.auth.signInWithPassword({email: email, password: password});
-    if(res.error) throw res.error;
-    await enterSession(res.data.session);
-  } catch(e) {
-    $('authMessage').textContent = e.message || 'Login failed.';
-    $('authMessage').style.color = 'red';
-  } finally {
-    $('loginBtn').disabled = false;
-  }
-};
 
 $('logoutBtn').onclick = async function() {
   if(sb) await sb.auth.signOut();
@@ -822,11 +828,13 @@ function renderHome() {
 }
 
 function renderHistory() {
-  var f = $('historyFilter').value;\n  var q = $('historySearch') ? $('historySearch').value.trim().toLowerCase() : '';
+  var f = $('historyFilter').value;
+  var q = $('historySearch') ? $('historySearch').value.trim().toLowerCase() : '';
   var all = db.purchases.map(function(x) { return Object.assign({}, x, {type:'Purchase'}); })
     .concat(db.sales.map(function(x) { return Object.assign({}, x, {type:'Sale'}); }))
     .sort(function(a,b) { return b.created - a.created; });
-  if(f !== 'all') all = all.filter(function(x) { return x.type.toLowerCase() === f; });\n  if(q) all = all.filter(function(x){return [x.product,x.note,x.date,x.payment].join(' ').toLowerCase().indexOf(q)>=0;});
+  if(f !== 'all') all = all.filter(function(x) { return x.type.toLowerCase() === f; });
+  if(q) all = all.filter(function(x){return [x.product,x.note,x.date,x.payment].join(' ').toLowerCase().indexOf(q)>=0;});
   
   if(!all.length) {
     $('historyList').innerHTML = '<div class="empty">No transactions found.</div>';
@@ -838,7 +846,8 @@ function renderHistory() {
            '<div class="row" style="margin-top:8px"><span>'+money(x.total)+'</span><span class="'+(x.type==='Sale'?'green':'')+'">'+(x.type==='Sale'?'Net profit '+money(x.netProfit):'Purchase')+'</span></div></div>';
   }).join('');
 }
-$('historyFilter').onchange = renderHistory;\nif($('historySearch')) $('historySearch').oninput = renderHistory;
+$('historyFilter').onchange = renderHistory;
+if($('historySearch')) $('historySearch').oninput = renderHistory;
 
 function renderReports() {
   var m = $('reportMonth').value || today.slice(0,7);
@@ -1187,4 +1196,4 @@ $('printRecentBill').onclick=function(){if(!window.lastSalesInvoice){showAlert('
 
 </script>
 </body>
-</html>w
+</html>
