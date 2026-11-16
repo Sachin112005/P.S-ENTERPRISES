@@ -704,100 +704,71 @@ window.toggleActive = async function(id, state) {
   } catch(e) { showAlert(e.message||e) }
 };
 
+function pendingInventoryBill(type) {
+  var key='ps_enterprises_pending_'+type;
+  var raw=sessionStorage.getItem(key);
+  if(raw){try{return JSON.parse(raw);}catch(e){sessionStorage.removeItem(key);}}
+  var value={request_id:crypto.randomUUID(),bill_number:'INV-'+(type==='purchase'?'P':'S')+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,7).toUpperCase()};
+  sessionStorage.setItem(key,JSON.stringify(value));
+  return value;
+}
+function clearPendingInventoryBill(type){sessionStorage.removeItem('ps_enterprises_pending_'+type);}
+async function postInventoryBill(payload) {
+  await requireUser();
+  var result = await sb.rpc('ps_inventory_post_bill', {p_payload: payload});
+  if (result.error) throw result.error;
+  return result.data;
+}
+
 $('savePurchase').onclick = async function() {
-  var savedCount=0;
   try {
     await requireUser();
-    var rows=Array.prototype.slice.call(document.querySelectorAll('.purchase-item'));
-    var items=rows.map(function(row){
+    var items = Array.prototype.slice.call(document.querySelectorAll('.purchase-item')).map(function(row) {
       var p=product(row.querySelector('.purchase-item-product').value);
       var cartons=Math.max(0,Number(row.querySelector('.purchase-item-cartons').value)||0);
       var loose=Math.max(0,Number(row.querySelector('.purchase-item-loose').value)||0);
       var rate=Math.max(0,Number(row.querySelector('.purchase-item-rate').value)||0);
       if(!p) throw new Error('Select a product in every purchase item.');
-      if(cartons<=0 && loose<=0) throw new Error('Enter quantity for '+p.name+'.');
+      if(cartons<=0&&loose<=0) throw new Error('Enter quantity for '+p.name+'.');
       var qty=cartons+loose/(p.pieces||1);
-      return {product:p,loose:loose,qty:qty,rate:rate,total:qty*rate};
+      return {product_id:p.id, quantity:qty*(p.pieces||1), legacy_qty_cartons:qty, rate:rate/(p.pieces||1), legacy_rate:rate, amount:qty*rate};
     });
     if(!items.length) throw new Error('Add at least one product.');
-    var supplierId=$('purchaseSupplier').value||null;
-    var paymentMode=$('purchasePayment').value;
-    var billNote=$('purchaseNote').value.trim();
-    var billTotal=items.reduce(function(sum,item){return sum+item.total;},0);
+    var total=items.reduce(function(a,x){return a+x.amount;},0);
+    var mode=$('purchasePayment').value, supplierId=$('purchaseSupplier').value||null;
+    if(!supplierId) throw new Error('Select a supplier to post this purchase in ERP.');
     $('savePurchase').disabled=true;
-    for(var i=0;i<items.length;i++){
-      var item=items[i];
-      var note=[billNote?'Bill: '+billNote:null,'Item '+(i+1)+'/'+items.length,item.loose>0?item.loose+' loose pcs':null].filter(Boolean).join(' | ')||null;
-      var res=await sb.from('transactions').insert({
-        product_id:item.product.id,type:'purchase',qty_cartons:item.qty,rate:item.rate,
-        payment:paymentMode,note:note,supplier_id:supplierId,
-        created_at:new Date($('purchaseDate').value+'T12:00:00').toISOString()
-      }).select('id').single();
-      if(res.error) throw new Error('Saved '+savedCount+' of '+items.length+' items. '+res.error.message);
-      savedCount++;
-      if(supplierId){
-        var purchaseEntry=await sb.from('supplier_ledger').insert({
-          supplier_id:supplierId,transaction_id:res.data.id,entry_type:'purchase',
-          amount:item.total,note:'Purchase bill '+(billNote||'')+' · '+item.product.name,created_by:session.user.id
-        });
-        if(purchaseEntry.error) throw new Error('Stock saved for '+item.product.name+', but supplier purchase entry failed: '+purchaseEntry.error.message);
-        if(paymentMode!=='Credit'){
-          var paymentEntry=await sb.from('supplier_ledger').insert({
-            supplier_id:supplierId,transaction_id:res.data.id,entry_type:'payment',
-            amount:item.total,payment_method:paymentMode,
-            note:'Payment for '+item.product.name+(billNote?' · Bill '+billNote:''),created_by:session.user.id
-          });
-          if(paymentEntry.error) throw new Error('Purchase saved, but supplier payment ledger failed: '+paymentEntry.error.message);
-        }
-      }
-    }
-    $('purchaseNote').value='';
-    $('purchaseItems').innerHTML='';
-    addPurchaseItemRow();
-    await loadCloud();
-    showAlert('Purchase bill saved: '+items.length+' items · '+money(billTotal));
-    tab('home');
-  }catch(e){
-    if(savedCount) await loadCloud();
-    showAlert(e.message||e);
-  }finally{$('savePurchase').disabled=false;}
+    var pending=pendingInventoryBill('purchase'),billNo=pending.bill_number;
+    await postInventoryBill({request_id:pending.request_id,bill_number:billNo,bill_type:'purchase',bill_date:$('purchaseDate').value||today,party_id:supplierId,party_name:null,payment_mode:mode==='Credit'?'other':mode.toLowerCase().replace('bank transfer','bank'),amount_paid:mode==='Credit'?0:total,items:items,legacy_items:items.map(function(x){return {product_id:x.product_id,qty_cartons:x.legacy_qty_cartons,rate:x.legacy_rate,amount:x.amount};}),note:$('purchaseNote').value.trim(),channel:null,expense:0});
+    clearPendingInventoryBill('purchase');$('purchaseNote').value='';$('purchaseItems').innerHTML='';addPurchaseItemRow();await loadCloud();showAlert('Purchase bill saved: '+items.length+' items · '+money(total));tab('home');
+  } catch(e) { showAlert(e.message||String(e)); }
+  finally {$('savePurchase').disabled=false;}
 };
 
 $('saveSale').onclick = async function(){
- var savedCount=0;
- try{
-  await requireUser();
-  var items=Array.prototype.slice.call(document.querySelectorAll('.sale-item')).map(function(row){
-   var p=product(row.querySelector('.sale-item-product').value),c=Math.max(0,Number(row.querySelector('.sale-item-cartons').value)||0),l=Math.max(0,Number(row.querySelector('.sale-item-loose').value)||0),r=Math.max(0,Number(row.querySelector('.sale-item-rate').value)||0);
-   if(!p)throw new Error('Select a product in every sale item.');if(c<=0&&l<=0)throw new Error('Enter quantity for '+p.name+'.');
-   var q=c+l/(p.pieces||1);if(q>stock(p))throw new Error('Insufficient stock for '+p.name+'. Available: '+stock(p).toFixed(2)+' cartons.');
-   var pcs=c*(p.pieces||1)+l;return {product:p,qty:q,pieces:pcs,rate:r,total:pcs*r};
-  });
-  if(!items.length)throw new Error('Add at least one product.');
-  var billTotal=items.reduce(function(s,x){return s+x.total;},0);if(billTotal<=0)throw new Error('Enter valid sale rates.');
-  var expense=num('salesExpense'),registered=$('saleCustomerType').value==='registered',mode=$('salesPayment').value,isCredit=mode==='Credit / Due'||mode==='Partial Payment',cid=registered?$('saleCustomer').value:null;
-  if(registered&&!cid)throw new Error('Select a registered customer.');if(isCredit&&!registered)throw new Error('Walk-in customers cannot be given credit.');
-  var received=isCredit?Number($('saleReceivedNow').value||0):billTotal;
-  if(received<0||received>billTotal)throw new Error('Received amount cannot exceed bill total.');
-  if(mode==='Credit / Due'&&received!==0)throw new Error('For full credit, amount received now must be 0.');
-  var cname=registered?((db.customers.find(function(x){return x.id===cid;})||{}).name||''):'',remaining=received;
-  var billRef='BILL-'+Date.now();
-  $('saveSale').disabled=true;
-  for(var i=0;i<items.length;i++){
-   var it=items[i],lineExpense=expense*(it.total/billTotal),note=['BillRef: '+billRef,registered?'Customer: '+cname:'Walk-in / Unregistered Customer',$('salesNote').value.trim()?'Bill: '+$('salesNote').value.trim():null,'Item '+(i+1)+'/'+items.length].filter(Boolean).join(' | ');
-   var res=await sb.from('transactions').insert({product_id:it.product.id,type:'sale',channel:$('salesChannel').value.toLowerCase(),qty_cartons:it.qty,rate:it.rate*(it.product.pieces||1),expense:lineExpense,payment:mode,note:note,created_at:new Date($('salesDate').value+'T12:00:00').toISOString()}).select('id,total').single();
-   if(res.error)throw new Error('Saved '+savedCount+' of '+items.length+' items. '+res.error.message);savedCount++;
-   if(registered){
-    var actual=Number(res.data.total||it.total),led=await sb.from('customer_ledger').insert({customer_id:cid,transaction_id:res.data.id,entry_type:'sale',amount:actual,note:'['+billRef+'] Sale: '+it.product.name,created_by:session.user.id});
-    if(led.error)throw new Error('Sale saved but customer ledger failed: '+led.error.message);
-    var alloc=Math.min(remaining,actual);remaining-=alloc;
-    if(alloc>0){var pay=await sb.from('customer_ledger').insert({customer_id:cid,transaction_id:res.data.id,entry_type:'payment',amount:alloc,payment_method:mode==='Credit / Due'?'Not received':mode,note:'['+billRef+'] '+(isCredit?'Part payment: ':'Sale payment: ')+it.product.name,created_by:session.user.id});if(pay.error)throw new Error('Sale saved but payment ledger failed: '+pay.error.message);}
-   }
-  }
-  $('salesNote').value='';$('salesExpense').value='0';$('saleReceivedNow').value='0';$('saleItems').innerHTML='';addSaleItemRow();$('salesPayment').value='Cash';updateSaleCustomerUI();
-  await loadCloud();showAlert('Sales bill saved: '+items.length+' items · '+money(billTotal));tab('home');
- }catch(e){if(savedCount)await loadCloud();showAlert(e.message||e);}
- finally{$('saveSale').disabled=false;}
+  try {
+    await requireUser();
+    var items=Array.prototype.slice.call(document.querySelectorAll('.sale-item')).map(function(row){
+      var p=product(row.querySelector('.sale-item-product').value),c=Math.max(0,Number(row.querySelector('.sale-item-cartons').value)||0),l=Math.max(0,Number(row.querySelector('.sale-item-loose').value)||0),r=Math.max(0,Number(row.querySelector('.sale-item-rate').value)||0);
+      if(!p)throw new Error('Select a product in every sale item.');if(c<=0&&l<=0)throw new Error('Enter quantity for '+p.name+'.');
+      var cartons=c+l/(p.pieces||1),pieces=c*(p.pieces||1)+l;
+      if(cartons>stock(p))throw new Error('Insufficient stock for '+p.name+'. Available: '+stock(p).toFixed(2)+' cartons.');
+      return {product_id:p.id,quantity:pieces,legacy_qty_cartons:cartons,rate:r,legacy_rate:r*(p.pieces||1),amount:pieces*r,product_name:p.name};
+    });
+    if(!items.length)throw new Error('Add at least one product.');
+    var total=items.reduce(function(a,x){return a+x.amount;},0);if(total<=0)throw new Error('Enter valid sale rates.');
+    var expense=num('salesExpense'),registered=$('saleCustomerType').value==='registered',mode=$('salesPayment').value,isCredit=mode==='Credit / Due'||mode==='Partial Payment',cid=registered?$('saleCustomer').value:null;
+    if(registered&&!cid)throw new Error('Select a registered customer.');if(isCredit&&!registered)throw new Error('Walk-in customers cannot be given credit.');
+    var received=isCredit?Number($('saleReceivedNow').value||0):total;
+    if(received<0||received>total)throw new Error('Received amount cannot exceed bill total.');if(mode==='Credit / Due'&&received!==0)throw new Error('For full credit, amount received now must be 0.');
+    $('saveSale').disabled=true;
+    var cname=registered?((db.customers.find(function(x){return x.id===cid;})||{}).name||''):'Walk-in Customer';
+    var paymentMode=mode==='Cash'?'cash':mode==='UPI'?'upi':mode==='Bank transfer'?'bank':'other';
+    var pending=pendingInventoryBill('sale'),billNo=pending.bill_number;
+    await postInventoryBill({request_id:pending.request_id,bill_number:billNo,bill_type:'sale',bill_date:$('salesDate').value||today,party_id:cid,party_name:cname,payment_mode:paymentMode,amount_paid:received,items:items.map(function(x){return {product_id:x.product_id,quantity:x.quantity,rate:x.rate};}),legacy_items:items.map(function(x){return {product_id:x.product_id,qty_cartons:x.legacy_qty_cartons,rate:x.legacy_rate,amount:x.amount};}),note:$('salesNote').value.trim(),channel:$('salesChannel').value.toLowerCase(),expense:expense});
+    clearPendingInventoryBill('sale');$('salesNote').value='';$('salesExpense').value='0';$('saleReceivedNow').value='0';$('saleItems').innerHTML='';addSaleItemRow();$('salesPayment').value='Cash';updateSaleCustomerUI();await loadCloud();showAlert('Sales bill saved: '+items.length+' items · '+money(total));tab('home');
+  }catch(e){showAlert(e.message||String(e));}
+  finally{$('saveSale').disabled=false;}
 };
 
 function renderStock() {
