@@ -84,7 +84,8 @@ hr{border:0;border-top:1px solid var(--line);margin:12px 0}footer{text-align:cen
 <div class="grid"><div><label>Cartons purchased</label><input id="purchaseQty" type="number" min="0" step="any" value="1"></div><div><label>Pieces (Loose)</label><input id="purchasePieces" type="number" min="0" step="any" value="0"></div><div style="grid-column: 1 / -1"><label>Purchase rate / carton (₹)</label><input id="purchaseRate" type="number" min="0" step="any"></div></div>
 <label>Purchase date</label><input id="purchaseDate" type="date">
 <label>Payment method</label><select id="purchasePayment"><option>Cash</option><option>UPI</option><option>Bank transfer</option><option>Credit</option></select>
-<label>Supplier / note</label><input id="purchaseNote" placeholder="Supplier or payment reference">
+<label>Supplier</label><select id="purchaseSupplier"><option value="">Select supplier (optional)</option></select>
+ <label>Supplier / note</label><input id="purchaseNote" placeholder="Payment reference or note">
 <div class="card" style="background:#f7f9fd;box-shadow:none"><div class="row"><span class="muted">Total purchase</span><b id="purchaseTotal">₹0</b></div></div>
 <button class="primary" id="savePurchase">SAVE PURCHASE & UPDATE STOCK</button></div></section>
 
@@ -531,20 +532,47 @@ window.toggleActive = async function(id, state) {
 };
 
 $('savePurchase').onclick = async function() {
+  var savedTransaction = false;
   try {
     await requireUser();
     var p = product($('purchaseProduct').value), c = num('purchaseQty'), pcs = num('purchasePieces'), q = p ? c + (pcs / (p.pieces || 1)) : c;
     if(!p) throw new Error('Add a product first.');
     if(q <= 0) throw new Error('Enter a valid quantity.');
-    var rate = num('purchaseRate'), noteVal = $('purchaseNote').value;
+    var rate = num('purchaseRate'), total = q * rate;
+    var supplierId = $('purchaseSupplier').value || null;
+    var paymentMode = $('purchasePayment').value;
+    var noteVal = $('purchaseNote').value.trim();
     var note = [pcs>0 ? (noteVal ? noteVal + ' | ' + pcs + ' loose pcs' : pcs + ' loose pcs') : noteVal].filter(Boolean).join(' | ') || null;
-    var res = await sb.from('transactions').insert({product_id:p.id, type:'purchase', qty_cartons:q, rate:rate, payment:$('purchasePayment').value, note:note, created_at:new Date($('purchaseDate').value+'T12:00:00').toISOString()});
+    var res = await sb.from('transactions').insert({
+      product_id:p.id, type:'purchase', qty_cartons:q, rate:rate,
+      payment:paymentMode, note:note, supplier_id:supplierId,
+      created_at:new Date($('purchaseDate').value+'T12:00:00').toISOString()
+    }).select('id').single();
     if(res.error) throw res.error;
+    savedTransaction = true;
+    if(supplierId) {
+      var purchaseEntry = await sb.from('supplier_ledger').insert({
+        supplier_id:supplierId, transaction_id:res.data.id, entry_type:'purchase',
+        amount:total, note:'Purchase: '+p.name, created_by:session.user.id
+      });
+      if(purchaseEntry.error) throw new Error('Purchase and stock saved, but supplier purchase entry failed: '+purchaseEntry.error.message);
+      if(paymentMode !== 'Credit') {
+        var paymentEntry = await sb.from('supplier_ledger').insert({
+          supplier_id:supplierId, transaction_id:res.data.id, entry_type:'payment',
+          amount:total, payment_method:paymentMode,
+          note:'Payment for purchase: '+p.name, created_by:session.user.id
+        });
+        if(paymentEntry.error) throw new Error('Purchase saved, but supplier payment entry failed: '+paymentEntry.error.message);
+      }
+    }
     $('purchaseNote').value = ''; $('purchaseQty').value = '1'; $('purchasePieces').value = '0';
     await loadCloud();
-    showAlert('Purchase saved. Shared stock increased.');
+    showAlert('Purchase saved. Stock and supplier ledger updated.');
     tab('home');
-  } catch(e) { showAlert(e.message||e) }
+  } catch(e) {
+    if(savedTransaction) await loadCloud();
+    showAlert(e.message||e);
+  }
 };
 
 $('saveSale').onclick = async function() {
@@ -810,7 +838,15 @@ setInterval(function() { if(session) loadCloud(); }, 12000);
 
       document.getElementById('spSelect').innerHTML = suppliers.map(function(s) {
         return '<option value="' + esc(s.id) + '">' + esc(s.name) + '</option>';
-      }).join('');
+      }).join('') || '<option value="">Add supplier first</option>';
+      var purchaseSupplier = document.getElementById('purchaseSupplier');
+      if (purchaseSupplier) {
+        var selectedSupplier = purchaseSupplier.value;
+        purchaseSupplier.innerHTML = '<option value="">Select supplier (optional)</option>' + suppliers.map(function(s) {
+          return '<option value="' + esc(s.id) + '">' + esc(s.name) + '</option>';
+        }).join('');
+        if (suppliers.some(function(s) { return s.id === selectedSupplier; })) purchaseSupplier.value = selectedSupplier;
+      }
 
       document.getElementById('spList').innerHTML = suppliers.map(function(s) {
         var due = Number(s.opening_balance || 0);
@@ -894,7 +930,10 @@ setInterval(function() { if(session) loadCloud(); }, 12000);
     tab('supplier');
     loadSuppliers();
   });
+  document.querySelector('nav button[data-tab="purchase"]').addEventListener('click', function() {
+    loadSuppliers();
+  });
 })();
 </script>
 </body>
-</html>
+</html>a
