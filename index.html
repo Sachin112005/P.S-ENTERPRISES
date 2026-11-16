@@ -339,8 +339,9 @@ async function loadCloud() {
     refreshSelectors(); renderHome(); renderProducts(); renderStock(); renderHistory(); renderReports(); renderCustomers(); applyRoleUI();
     var ap=$('adjustProduct'); if(ap) ap.innerHTML=db.products.filter(function(p){return p.active;}).map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>';}).join('');
   } catch(e) {
-    $('syncStatus').textContent = 'Sync error';
-    console.error(e);
+    var detail = e && e.message ? e.message : String(e || 'Unknown error');
+    $('syncStatus').textContent = 'Sync error: ' + detail;
+    console.error('P.S ENTERPRISES cloud sync failed:', e);
   } finally {
     refreshBusy = false;
   }
@@ -469,12 +470,16 @@ window.printCustomerBill=function(ref,cid){
   var c=db.customers.find(function(x){return String(x.id)===String(cid);});if(!c)return;
   var tx=db.sales.filter(function(x){return String(x.note||'').indexOf('BillRef: '+ref)>=0;});
   if(!tx.length){showAlert('Bill details not found.');return;}
-  var rows=tx.map(function(x){return '<tr><td>'+esc(x.product)+'</td><td>'+Number(x.qty||0).toFixed(2)+'</td><td>'+money(x.rate)+'</td><td>'+money(x.total)+'</td></tr>';}).join('');
+  var rows=tx.map(function(x){
+    var p=db.products.find(function(z){return String(z.id)===String(x.productId);});
+    var pcs=Math.round(Number(x.qty||0)*(p?(Number(p.pieces)||1):(Number(x.piecesPerCarton)||1)));
+    return '<tr><td>'+esc(x.product)+'</td><td>'+pcs.toLocaleString('en-IN')+' pcs</td><td>'+money(x.rate)+'/pc</td><td>'+money(x.total)+'</td></tr>';
+  }).join('');
   var total=tx.reduce(function(a,x){return a+Number(x.total||0);},0);
   var led=db.customerLedger.filter(function(x){return String(x.note||'').indexOf(ref)>=0;});
   var paid=led.filter(function(x){return x.entry_type==='payment';}).reduce(function(a,x){return a+Number(x.amount||0);},0);
   var w=window.open('','_blank');if(!w){showAlert('Allow pop-ups to generate PDF.');return;}
-  w.document.write('<!doctype html><html><head><title>'+esc(ref)+'</title><style>body{font:14px Arial;padding:28px;color:#17243a}h1{color:#0B2E1F}table{width:100%;border-collapse:collapse;margin-top:24px}th,td{padding:10px;border-bottom:1px solid #ddd;text-align:left}th{background:#eef5ef}.sum{margin:24px 0 0 auto;width:250px}.sum div{display:flex;justify-content:space-between;padding:8px;border-bottom:1px solid #ddd}</style></head><body><h1>P.S ENTERPRISES</h1><h2>Sales Invoice</h2><p><b>Bill:</b> '+esc(ref)+'<br><b>Customer:</b> '+esc(c.name)+'<br><b>Date:</b> '+new Date(tx[0].created).toLocaleString('en-IN')+'</p><table><thead><tr><th>Product</th><th>Qty (cartons)</th><th>Rate/carton</th><th>Total</th></tr></thead><tbody>'+rows+'</tbody></table><div class="sum"><div><b>Bill Total</b><b>'+money(total)+'</b></div><div><span>Paid</span><b>'+money(paid)+'</b></div><div><span>Balance</span><b>'+money(total-paid)+'</b></div></div><script>window.onload=function(){window.print();};<\\/script></body></html>');
+  w.document.write('<!doctype html><html><head><title>'+esc(ref)+'</title><style>body{font:14px Arial;padding:28px;color:#17243a}h1{color:#0B2E1F}table{width:100%;border-collapse:collapse;margin-top:24px}th,td{padding:10px;border-bottom:1px solid #ddd;text-align:left}th{background:#eef5ef}.sum{margin:24px 0 0 auto;width:250px}.sum div{display:flex;justify-content:space-between;padding:8px;border-bottom:1px solid #ddd}</style></head><body><h1>P.S ENTERPRISES</h1><h2>Sales Invoice</h2><p><b>Bill:</b> '+esc(ref)+'<br><b>Customer:</b> '+esc(c.name)+'<br><b>Date:</b> '+new Date(tx[0].created).toLocaleString('en-IN')+'</p><table><thead><tr><th>Product</th><th>Quantity</th><th>Rate / piece</th><th>Total</th></tr></thead><tbody>'+rows+'</tbody></table><div class="sum"><div><b>Bill Total</b><b>'+money(total)+'</b></div><div><span>Paid</span><b>'+money(paid)+'</b></div><div><span>Balance</span><b>'+money(total-paid)+'</b></div></div><script>window.onload=function(){window.print();};<\\/script></body></html>');
   w.document.close();
 };
 
@@ -1200,4 +1205,4 @@ $('printRecentBill').onclick=function(){if(!window.lastSalesInvoice){showAlert('
 
 </script>
 </body>
-</html>
+</html>2
