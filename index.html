@@ -735,5 +735,166 @@ refreshSelectors(); renderHome(); renderProducts(); renderStock(); gstCalc(); pu
 
 setInterval(function() { if(session) loadCloud(); }, 12000);
 </script>
+<script>
+(function () {
+  'use strict';
+
+  if (document.getElementById('supplier')) return;
+
+  var nav = document.querySelector('nav');
+  var main = document.querySelector('main');
+  if (!nav || !main || typeof sb === 'undefined') {
+    console.error('Supplier Khata: required app elements/client not found.');
+    return;
+  }
+
+  var navButton = document.createElement('button');
+  navButton.type = 'button';
+  navButton.textContent = 'Supplier Khata';
+  navButton.dataset.tab = 'supplier';
+  nav.appendChild(navButton);
+
+  var section = document.createElement('section');
+  section.id = 'supplier';
+  section.className = 'hidden';
+  section.innerHTML = `
+    <h2>Supplier Khata</h2>
+    <p class="note">Track supplier opening balances and payments.</p>
+    <div class="panel">
+      <h2>Add Supplier</h2>
+      <label>Supplier Name</label>
+      <input id="spName" placeholder="Supplier name">
+      <label>Mobile Number</label>
+      <input id="spPhone" type="tel" placeholder="Mobile number">
+      <label>Opening Due (₹)</label>
+      <input id="spOpening" type="number" min="0" step="0.01" value="0">
+      <button class="primary" type="button" id="spAdd">SAVE SUPPLIER</button>
+    </div>
+    <div class="panel">
+      <h2>Record Payment</h2>
+      <label>Select Supplier</label>
+      <select id="spSelect"></select>
+      <label>Amount Paid (₹)</label>
+      <input id="spAmount" type="number" min="0.01" step="0.01">
+      <label>Payment Method</label>
+      <select id="spMethod">
+        <option>Cash</option><option>UPI</option><option>Bank transfer</option>
+      </select>
+      <label>Note</label>
+      <input id="spNote" placeholder="Payment details">
+      <button class="primary" type="button" id="spPay">SAVE PAYMENT</button>
+    </div>
+    <h2>Supplier List</h2>
+    <div id="spList"></div>
+  `;
+
+  var footer = main.querySelector('footer');
+  if (footer) main.insertBefore(section, footer);
+  else main.appendChild(section);
+
+  var suppliers = [];
+  var entries = [];
+
+  async function loadSuppliers() {
+    try {
+      await requireUser();
+      var results = await Promise.all([
+        sb.from('suppliers').select('*').order('name'),
+        sb.from('supplier_ledger').select('*').order('created_at', {ascending:false})
+      ]);
+      if (results[0].error) throw results[0].error;
+      if (results[1].error) throw results[1].error;
+
+      suppliers = results[0].data || [];
+      entries = results[1].data || [];
+
+      document.getElementById('spSelect').innerHTML = suppliers.map(function(s) {
+        return '<option value="' + esc(s.id) + '">' + esc(s.name) + '</option>';
+      }).join('');
+
+      document.getElementById('spList').innerHTML = suppliers.map(function(s) {
+        var due = Number(s.opening_balance || 0);
+        entries.filter(function(x) {
+          return x.supplier_id === s.id;
+        }).forEach(function(x) {
+          if (x.entry_type === 'purchase' || x.entry_type === 'adjustment') {
+            due += Number(x.amount || 0);
+          }
+          if (x.entry_type === 'payment') due -= Number(x.amount || 0);
+        });
+        return '<div class="card"><b>' + esc(s.name) + '</b>' +
+          '<div class="muted">' + esc(s.phone || '') + '</div>' +
+          '<div class="red" style="margin-top:8px">Balance Due: ' +
+          money(due) + '</div></div>';
+      }).join('') || '<div class="empty">No suppliers added yet.</div>';
+    } catch(e) {
+      showAlert(e.message || String(e));
+    }
+  }
+
+  document.getElementById('spAdd').addEventListener('click', async function() {
+    try {
+      await requireUser();
+      var name = document.getElementById('spName').value.trim();
+      var phone = document.getElementById('spPhone').value.trim();
+      var opening = Number(document.getElementById('spOpening').value || 0);
+      if (!name) throw new Error('Enter supplier name.');
+      if (!Number.isFinite(opening) || opening < 0) {
+        throw new Error('Enter a valid opening due.');
+      }
+
+      var result = await sb.from('suppliers').insert({
+        name: name,
+        phone: phone || null,
+        opening_balance: opening,
+        created_by: session.user.id
+      });
+      if (result.error) throw result.error;
+
+      document.getElementById('spName').value = '';
+      document.getElementById('spPhone').value = '';
+      document.getElementById('spOpening').value = '0';
+      await loadSuppliers();
+      showAlert('Supplier saved.');
+    } catch(e) {
+      showAlert(e.message || String(e));
+    }
+  });
+
+  document.getElementById('spPay').addEventListener('click', async function() {
+    try {
+      await requireUser();
+      var supplierId = document.getElementById('spSelect').value;
+      var amount = Number(document.getElementById('spAmount').value);
+      if (!supplierId) throw new Error('Select a supplier.');
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw new Error('Enter a valid payment amount.');
+      }
+
+      var result = await sb.from('supplier_ledger').insert({
+        supplier_id: supplierId,
+        entry_type: 'payment',
+        amount: amount,
+        payment_method: document.getElementById('spMethod').value,
+        note: document.getElementById('spNote').value.trim() || null,
+        created_by: session.user.id
+      });
+      if (result.error) throw result.error;
+
+      document.getElementById('spAmount').value = '';
+      document.getElementById('spNote').value = '';
+      await loadSuppliers();
+      showAlert('Supplier payment saved.');
+    } catch(e) {
+      showAlert(e.message || String(e));
+    }
+  });
+
+  navButton.addEventListener('click', function() {
+    tab('supplier');
+    loadSuppliers();
+  });
+})();
+</script>
 </body>
 </html>
