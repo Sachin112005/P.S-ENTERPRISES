@@ -404,14 +404,23 @@ function tab(id) {
 document.querySelectorAll('nav button').forEach(function(b) { b.onclick = function() { tab(b.dataset.tab); }; });
 
 function refreshSelectors() {
-  var activeProds = db.products.filter(function(p) { return p.active; });
-  ['purchaseProduct','salesProduct'].forEach(function(id) {
-    var old = $(id).value;
-    $(id).innerHTML = activeProds.map(function(p) { return '<option value="'+p.id+'">'+esc(p.name)+'</option>'; }).join('');
-    if(!activeProds.length) $(id).innerHTML = '<option value="">Add products first</option>';
-    if(product(old) && product(old).active) $(id).value = old;
+  // V3+ uses repeatable purchase/sales item rows, not the old single-product selects.
+  var purchaseOpts = purchaseProductOptions('');
+  var saleOpts = saleProductOptions('');
+  document.querySelectorAll('.purchase-item-product').forEach(function(el) {
+    var old = el.value;
+    el.innerHTML = purchaseOpts;
+    if (old && product(old)) el.value = old;
+    updatePurchaseItemRow(el.closest('.purchase-item'));
   });
-  fillPurchase(); fillSales();
+  document.querySelectorAll('.sale-item-product').forEach(function(el) {
+    var old = el.value;
+    el.innerHTML = saleOpts;
+    if (old && product(old)) el.value = old;
+    updateSaleItemRow(el.closest('.sale-item'));
+  });
+  purchasePreview();
+  salesPreview();
   refreshCustomerSelectors();
 }
 
@@ -1205,4 +1214,4 @@ $('printRecentBill').onclick=function(){if(!window.lastSalesInvoice){showAlert('
 
 </script>
 </body>
-</html>2
+</html>
