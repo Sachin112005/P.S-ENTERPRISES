@@ -36,7 +36,7 @@ hr{border:0;border-top:1px solid var(--line);margin:12px 0}footer{text-align:cen
 <h1>P.S ENTERPRISES</h1><p>Cloud inventory · Admin and Staff sign-in</p>
 <label>Email address</label><input id="loginEmail" type="email" autocomplete="username" placeholder="name@example.com">
 <label>Password</label><input id="loginPassword" type="password" autocomplete="current-password" placeholder="Password">
-<button class="primary" id="loginBtn" onclick="doLogin()">SIGN IN</button>
+<button type="button" class="primary" id="loginBtn" onclick="window.doLogin()">SIGN IN</button>
 <div id="authMessage" class="muted" style="margin-top:12px; font-weight:bold; color: red;"></div>
 <p style="margin-top:18px">Accounts are created by the business administrator. Contact Admin if you need access.</p>
 </div></div>
@@ -229,4 +229,490 @@ async function loadCloud() {
     db.products = (results[0].data || []).map(function(p) {
       return {id:p.id, name:p.name, category:p.category, buyRate:Number(p.buy_rate), retailRate:Number(p.retail_rate), sellRate:Number(p.retail_rate), wholesaleRate:Number(p.wholesale_rate), pieces:Number(p.pieces_per_carton), alert:Number(p.low_stock_threshold), stock_cartons:Number(p.stock_cartons), active:p.active!==false};
     });
-    db.purchases = [];
+    db.purchases = []; db.sales = [];
+    
+    (results[1].data || []).forEach(function(t) {
+      var p = db.products.find(function(x) { return x.id === t.product_id; });
+      var pName = p ? p.name : 'Product';
+      var pCat = p ? p.category : '';
+      var item = {id:t.id, created:new Date(t.created_at).getTime(), productId:t.product_id, product:pName, category:pCat, date:(t.created_at||'').slice(0,10), qty:Number(t.qty_cartons), rate:Number(t.rate), total:Number(t.total), profit:Number(t.profit||0), netProfit:Number(t.net_profit != null ? t.net_profit : (t.profit || 0)), payment:t.payment||'', note:t.note||'', channel:t.channel==='retail'?'Retail':t.channel==='wholesale'?'Wholesale':''};
+      if(t.type === 'purchase') db.purchases.push(item);
+      else db.sales.push(item);
+    });
+    
+    $('syncStatus').textContent = 'Cloud synced · ' + new Date().toLocaleTimeString();
+    refreshSelectors(); renderHome(); renderProducts(); renderStock(); renderHistory(); renderReports(); renderCustomers(); applyRoleUI();
+  } catch(e) {
+    $('syncStatus').textContent = 'Sync error';
+    console.error(e);
+  } finally {
+    refreshBusy = false;
+  }
+}
+
+async function enterSession(sess) {
+  session = sess;
+  profile = await getProfile(sess.user);
+  showApp();
+  $('syncStatus').textContent = 'Connecting…';
+  await loadCloud();
+}
+
+function applyRoleUI() {
+  var admin = isAdmin();
+  $('saveProduct').classList.toggle('hidden', !admin);
+  document.querySelector('#products .panel').classList.toggle('hidden', !admin);
+  document.querySelectorAll('#productList button').forEach(function(b) { b.classList.toggle('hidden', !admin); });
+}
+
+// 4. Global Login Function
+window.doLogin = async function() {
+  if (!sb) {
+    $('authMessage').textContent = 'Internet issue! Supabase load nahi hua. Page refresh karein.';
+    return;
+  }
+  var email = $('loginEmail').value.trim();
+  var password = $('loginPassword').value;
+  if(!email || !password) {
+    $('authMessage').textContent = 'Enter email and password.';
+    return;
+  }
+  $('loginBtn').disabled = true;
+  $('authMessage').textContent = 'Signing in…';
+  $('authMessage').style.color = 'gray';
+  try {
+    var res = await sb.auth.signInWithPassword({email: email, password: password});
+    if(res.error) throw res.error;
+    await enterSession(res.data.session);
+  } catch(e) {
+    $('authMessage').textContent = e.message || 'Login failed.';
+    $('authMessage').style.color = 'red';
+  } finally {
+    $('loginBtn').disabled = false;
+  }
+};
+
+$('logoutBtn').onclick = async function() {
+  if(sb) await sb.auth.signOut();
+  session = null; profile = null;
+  showAuth('Signed out.');
+};
+
+if(sb) {
+  sb.auth.onAuthStateChange(async function(_event, sess) {
+    if(sess && !session) {
+      try { await enterSession(sess) } catch(e) { showAuth(e.message) }
+    } else if(!sess && session) {
+      session = null; profile = null; showAuth();
+    }
+  });
+}
+
+async function requireUser() { if(!session) throw new Error('Please sign in first.'); }
+
+$('today').textContent = new Date().toLocaleDateString('en-IN', {timeZone:'Asia/Kolkata', day:'2-digit', month:'short', year:'numeric'});
+['purchaseDate','salesDate'].forEach(function(id) { $(id).value = today; });
+$('reportMonth').value = today.slice(0,7);
+
+function product(id) { return db.products.find(function(p) { return String(p.id) === String(id); }); }
+function stock(p) { return Number(p.stock_cartons) || 0; }
+
+function tab(id) {
+  document.querySelectorAll('main section').forEach(function(s) { s.classList.toggle('hidden', s.id !== id); });
+  document.querySelectorAll('nav button').forEach(function(b) { b.classList.toggle('active', b.dataset.tab === id); });
+  if(id==='home') renderHome();
+  if(id==='products') renderProducts();
+  if(id==='stock') renderStock();
+  if(id==='history') renderHistory();
+  if(id==='reports') renderReports();
+  if(id==='purchase'||id==='sales') refreshSelectors();
+  if(id==='khata') renderCustomers();
+}
+document.querySelectorAll('nav button').forEach(function(b) { b.onclick = function() { tab(b.dataset.tab); }; });
+
+function refreshSelectors() {
+  var activeProds = db.products.filter(function(p) { return p.active; });
+  ['purchaseProduct','salesProduct'].forEach(function(id) {
+    var old = $(id).value;
+    $(id).innerHTML = activeProds.map(function(p) { return '<option value="'+p.id+'">'+esc(p.name)+'</option>'; }).join('');
+    if(!activeProds.length) $(id).innerHTML = '<option value="">Add products first</option>';
+    if(product(old) && product(old).active) $(id).value = old;
+  });
+  fillPurchase(); fillSales();
+  refreshCustomerSelectors();
+}
+
+
+function customerBalance(c) {
+  var balance = Number(c.opening_balance || 0);
+  db.customerLedger.filter(function(x){ return x.customer_id === c.id; }).forEach(function(x){
+    if(x.entry_type === 'sale' || x.entry_type === 'adjustment') balance += Number(x.amount || 0);
+    if(x.entry_type === 'payment') balance -= Number(x.amount || 0);
+  });
+  return balance;
+}
+function refreshCustomerSelectors() {
+  var opts = db.customers.map(function(c){
+    return '<option value="'+c.id+'">'+esc(c.name)+' · Due '+money(customerBalance(c))+'</option>';
+  }).join('');
+  $('paymentCustomer').innerHTML = opts || '<option value="">Add customer first</option>';
+  $('saleCustomer').innerHTML = opts || '<option value="">Add customer first</option>';
+}
+function renderCustomers() {
+  refreshCustomerSelectors();
+  $('customerCount').textContent = db.customers.length;
+  $('totalCustomerDue').textContent = money(db.customers.reduce(function(sum, c) { return sum + Math.max(0, customerBalance(c)); }, 0));
+  if(!db.customers.length) {
+    $('customerList').innerHTML = '<div class="empty">No customers yet. Add a customer above.</div>';
+    return;
+  }
+  $('customerList').innerHTML = db.customers.map(function(c){
+    var due = customerBalance(c);
+    return '<div class="card"><div class="row"><b>'+esc(c.name)+'</b><span class="'+(due>0?'red':'green')+'">'+money(due)+'</span></div>'+
+      '<div class="muted">'+esc(c.phone || 'No phone')+(c.address?' · '+esc(c.address):'')+'</div>'+
+      '<button class="soft" style="margin-top:10px" onclick="viewCustomerLedger(\''+c.id+'\')">VIEW LEDGER</button></div>';
+  }).join('');
+}
+window.viewCustomerLedger = function(id) {
+  var c = db.customers.find(function(x){ return x.id === id; });
+  if(!c) return;
+  var entries = db.customerLedger.filter(function(x){ return x.customer_id === id; }).sort(function(a,b){ return new Date(b.created_at)-new Date(a.created_at); });
+  var sales = entries.filter(function(x){ return x.entry_type==='sale'; }).reduce(function(s,x){ return s+Number(x.amount||0); },0);
+  var payments = entries.filter(function(x){ return x.entry_type==='payment'; }).reduce(function(s,x){ return s+Number(x.amount||0); },0);
+  $('ledgerCustomerName').textContent = c.name + ' · Ledger';
+  $('ledgerDue').textContent = money(customerBalance(c));
+  $('ledgerSales').textContent = money(sales);
+  $('ledgerPayments').textContent = money(payments);
+  $('ledgerEntries').innerHTML = (Number(c.opening_balance||0)>0 ? '<div class="card"><div class="row"><b>Opening balance</b><b>'+money(c.opening_balance)+'</b></div></div>' : '') +
+    (entries.length ? entries.map(function(x){
+      var label = x.entry_type==='sale'?'Credit sale':x.entry_type==='payment'?'Payment received':'Adjustment';
+      var sign = x.entry_type==='payment'?'−':'+';
+      return '<div class="card"><div class="row"><b>'+label+'</b><b class="'+(x.entry_type==='payment'?'green':'red')+'">'+sign+money(x.amount)+'</b></div>'+
+        '<div class="muted">'+new Date(x.created_at).toLocaleString('en-IN')+' · '+esc(x.payment_method||'')+'</div>'+
+        (x.note?'<div class="muted">'+esc(x.note)+'</div>':'')+'</div>';
+    }).join('') : '<div class="empty">No ledger entries yet.</div>');
+  $('customerLedgerPanel').classList.remove('hidden');
+};
+$('closeCustomerLedger').onclick = function(){ $('customerLedgerPanel').classList.add('hidden'); };
+$('addCustomer').onclick = async function(){
+  try {
+    await requireUser();
+    var name = $('custName').value.trim();
+    if(!name) throw new Error('Enter customer name.');
+    var opening = Number($('custOpening').value || 0);
+    if(opening < 0) throw new Error('Opening balance cannot be negative.');
+    var res = await sb.from('customers').insert({
+      name:name, phone:$('custPhone').value.trim() || null,
+      address:$('custAddress').value.trim() || null,
+      opening_balance:opening, created_by:session.user.id
+    });
+    if(res.error) throw res.error;
+    $('custName').value=''; $('custPhone').value=''; $('custAddress').value=''; $('custOpening').value='0';
+    await loadCloud(); showAlert('Customer saved.');
+  } catch(e){ showAlert(e.message || String(e)); }
+};
+$('saveCustomerPayment').onclick = async function(){
+  try {
+    await requireUser();
+    var cid = $('paymentCustomer').value, amount = Number($('paymentAmount').value);
+    if(!cid) throw new Error('Select a customer.');
+    if(!(amount > 0)) throw new Error('Enter a valid payment amount.');
+    var res = await sb.from('customer_ledger').insert({
+      customer_id:cid, entry_type:'payment', amount:amount,
+      payment_method:$('paymentMethod').value,
+      note:$('paymentNote').value.trim() || null, created_by:session.user.id
+    });
+    if(res.error) throw res.error;
+    $('paymentAmount').value=''; $('paymentNote').value='';
+    await loadCloud(); showAlert('Customer payment saved.');
+  } catch(e){ showAlert(e.message || String(e)); }
+};
+$('salesPayment').onchange = function(){
+  $('creditCustomerWrap').classList.toggle('hidden', $('salesPayment').value !== 'Credit / Due');
+};
+
+function fillPurchase() { var p = product($('purchaseProduct').value); $('purchaseRate').value = p ? p.buyRate : ''; purchasePreview(); }
+function fillSales() { var p = product($('salesProduct').value), channel = $('salesChannel').value, kind = channel==='Wholesale' ? 'wholesaleRate' : 'retailRate'; $('salesRate').value = p ? (p[kind] != null ? p[kind] : (p.sellRate || 0)) : ''; $('salesRateLabel').textContent = channel + ' selling rate / piece (₹)'; $('availableStock').textContent = p ? stock(p).toFixed(2) + ' cartons' : '0 cartons'; salesPreview(); }
+
+$('purchaseProduct').onchange = fillPurchase;
+$('salesProduct').onchange = fillSales;
+$('salesChannel').onchange = fillSales;
+$('salesPayment').dispatchEvent(new Event('change'));
+
+function purchasePreview() { var p = product($('purchaseProduct').value), c = num('purchaseQty'), pcs = num('purchasePieces'), q = p ? c + (pcs / (p.pieces || 1)) : c; $('purchaseTotal').textContent = money(q * num('purchaseRate')); }
+['purchaseQty','purchasePieces','purchaseRate'].forEach(function(id) { $(id).oninput = purchasePreview; });
+
+function salesPreview() { var p = product($('salesProduct').value), c = num('salesQty'), pcs = num('salesPieces'), total_pcs = p ? (c * (p.pieces || 1)) + pcs : pcs, rate_per_pc = num('salesRate'), cost_per_pc = p ? (p.buyRate / (p.pieces || 1)) : 0, total = total_pcs * rate_per_pc, profit = total - (total_pcs * cost_per_pc) - num('salesExpense'); $('salesTotal').textContent = money(total); $('salesProfit').textContent = money(profit); }
+['salesQty','salesPieces','salesRate','salesExpense'].forEach(function(id) { $(id).oninput = salesPreview; });
+
+$('saveProduct').onclick = async function() {
+  try {
+    await requireUser();
+    if(!isAdmin()) throw new Error('Only Admin can add products.');
+    var name = $('prodName').value.trim();
+    if(!name) throw new Error('Enter product name.');
+    if(db.products.some(function(p) { return p.name.toLowerCase() === name.toLowerCase(); })) throw new Error('This product already exists.');
+    var res = await sb.from('products').insert({name:name, category:$('prodCategory').value, buy_rate:num('prodBuy'), retail_rate:num('prodRetail'), wholesale_rate:num('prodWholesale'), pieces_per_carton:num('prodPieces')||1, low_stock_threshold:num('prodAlert'), stock_cartons:0});
+    if(res.error) throw res.error;
+    $('prodName').value = '';
+    await loadCloud();
+    showAlert('Product saved to cloud.');
+  } catch(e) { showAlert(e.message || e); }
+};
+
+function renderProducts() {
+  if(!db.products.length) {
+    $('productList').innerHTML = '<div class="empty">No products yet. Admin can add products.</div>';
+    return;
+  }
+  $('productList').innerHTML = db.products.map(function(p) {
+    var html = '<div class="card" style="'+(p.active?'':'opacity:0.6; background:#f9f9f9')+'">';
+    html += '<div class="row"><b style="'+(p.active?'':'text-decoration:line-through')+'">'+esc(p.name)+'</b><span class="pill">'+esc(p.category)+'</span></div>';
+    html += '<div class="muted">'+p.pieces+' pcs/carton · Stock '+stock(p).toFixed(2)+' cartons</div>';
+    html += '<div class="row" style="margin-top:8px"><span>Buy '+money(p.buyRate)+'/ctn</span><span>Ret. '+money(p.retailRate)+'/pc</span><span>Whol. '+money(p.wholesaleRate)+'/pc</span></div>';
+    if(isAdmin()) {
+      html += '<div class="row" style="margin-top:10px">';
+      html += '<button class="soft" onclick="openEditRates(\''+p.id+'\')">Edit rates</button>';
+      if(p.active) html += '<button class="danger" onclick="toggleActive(\''+p.id+'\', false)">Deactivate</button>';
+      else html += '<button class="primary" style="margin-top:0;width:auto;padding:8px 12px" onclick="toggleActive(\''+p.id+'\', true)">Reactivate</button>';
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }).join('');
+}
+
+window.openEditRates = function(id) {
+  if(!isAdmin()) return;
+  var p = product(id);
+  if(!p) return;
+  $('editId').value = id;
+  $('editTitle').textContent = 'Edit: ' + p.name;
+  $('editBuy').value = p.buyRate;
+  $('editRetail').value = p.retailRate;
+  $('editWholesale').value = p.wholesaleRate;
+  $('editPieces').value = p.pieces;
+  $('editModal').classList.remove('hidden');
+};
+
+$('saveEditBtn').onclick = async function() {
+  try {
+    $('saveEditBtn').disabled = true;
+    var id = $('editId').value;
+    var res = await sb.from('products').update({buy_rate: num('editBuy'), retail_rate: num('editRetail'), wholesale_rate: num('editWholesale'), pieces_per_carton: num('editPieces') || 1}).eq('id', id);
+    if(res.error) throw res.error;
+    $('editModal').classList.add('hidden');
+    await loadCloud();
+  } catch(e) { showAlert(e.message||e) }
+  finally { $('saveEditBtn').disabled = false; }
+};
+
+window.toggleActive = async function(id, state) {
+  if(!isAdmin()) return;
+  if(!state && !confirm('Hide this product from billing?')) return;
+  try {
+    var res = await sb.from('products').update({active: state}).eq('id', id);
+    if(res.error) throw res.error;
+    await loadCloud();
+  } catch(e) { showAlert(e.message||e) }
+};
+
+$('savePurchase').onclick = async function() {
+  try {
+    await requireUser();
+    var p = product($('purchaseProduct').value), c = num('purchaseQty'), pcs = num('purchasePieces'), q = p ? c + (pcs / (p.pieces || 1)) : c;
+    if(!p) throw new Error('Add a product first.');
+    if(q <= 0) throw new Error('Enter a valid quantity.');
+    var rate = num('purchaseRate'), noteVal = $('purchaseNote').value;
+    var note = [pcs>0 ? (noteVal ? noteVal + ' | ' + pcs + ' loose pcs' : pcs + ' loose pcs') : noteVal].filter(Boolean).join(' | ') || null;
+    var res = await sb.from('transactions').insert({product_id:p.id, type:'purchase', qty_cartons:q, rate:rate, payment:$('purchasePayment').value, note:note, created_at:new Date($('purchaseDate').value+'T12:00:00').toISOString()});
+    if(res.error) throw res.error;
+    $('purchaseNote').value = ''; $('purchaseQty').value = '1'; $('purchasePieces').value = '0';
+    await loadCloud();
+    showAlert('Purchase saved. Shared stock increased.');
+    tab('home');
+  } catch(e) { showAlert(e.message||e) }
+};
+
+$('saveSale').onclick = async function() {
+  try {
+    await requireUser();
+    var p = product($('salesProduct').value), c = num('salesQty'), pcs = num('salesPieces'), q = p ? c + (pcs / (p.pieces || 1)) : c;
+    if(!p) throw new Error('Add a product first.');
+    if(q <= 0) throw new Error('Enter a valid quantity.');
+    var rate_per_pc = num('salesRate'), channel = $('salesChannel').value.toLowerCase(), db_rate = rate_per_pc * (p.pieces || 1);
+    var noteVal = $('salesNote').value, expenseVal = num('salesExpense');
+    var isCredit = $('salesPayment').value === 'Credit / Due';
+    var customerId = isCredit ? $('saleCustomer').value : null;
+    if(isCredit && !customerId) throw new Error('Select a customer for credit sale.');
+    var totalPieces = (c * (p.pieces || 1)) + pcs;
+    var saleAmount = totalPieces * rate_per_pc;
+    var receivedNow = isCredit ? Number($('saleReceivedNow').value || 0) : 0;
+    if(receivedNow < 0 || receivedNow > saleAmount) throw new Error('Received amount cannot exceed sale total.');
+    var note = [pcs>0 ? (noteVal ? noteVal + ' | ' + pcs + ' loose pieces' : pcs + ' loose pieces') : noteVal, expenseVal ? 'Other expenses: ' + expenseVal : null].filter(Boolean).join(' | ') || null;
+    var res = await sb.from('transactions').insert({
+      product_id:p.id, type:'sale', channel:channel, qty_cartons:q, rate:db_rate,
+      expense:expenseVal, payment:$('salesPayment').value, note:note,
+      created_at:new Date($('salesDate').value+'T12:00:00').toISOString()
+    }).select('id,total').single();
+    if(res.error) throw res.error;
+    if(isCredit) {
+      var led = await sb.from('customer_ledger').insert({
+        customer_id:customerId, transaction_id:res.data.id, entry_type:'sale',
+        amount:Number(res.data.total), note:'Credit sale: '+p.name, created_by:session.user.id
+      });
+      if(led.error) throw new Error('Sale saved, but customer ledger update failed: '+led.error.message);
+      if(receivedNow > 0) {
+        var pay = await sb.from('customer_ledger').insert({
+          customer_id:customerId, transaction_id:res.data.id, entry_type:'payment',
+          amount:receivedNow, payment_method:$('salesPayment').value,
+          note:'Part payment: '+p.name, created_by:session.user.id
+        });
+        if(pay.error) throw new Error('Sale saved, but received payment could not be recorded: '+pay.error.message);
+      }
+    }
+    $('salesNote').value = ''; $('salesQty').value = '1'; $('salesPieces').value = '0';
+    $('salesExpense').value = '0'; $('saleReceivedNow').value = '0';
+    await loadCloud();
+    showAlert(isCredit ? 'Credit sale and customer balance saved.' : 'Sale saved. Shared stock reduced.');
+    tab('home');
+  } catch(e) { showAlert(e.message||e) }
+};
+
+function renderStock() {
+  var active = db.products.filter(function(p) { return p.active; });
+  if(!active.length) {
+    $('stockList').innerHTML = '<div class="empty">Add products to start stock tracking.</div>';
+    return;
+  }
+  $('stockList').innerHTML = active.map(function(p) {
+    var q = stock(p), low = q <= p.alert;
+    var html = '<div class="card"><div class="row"><b>'+esc(p.name)+'</b><span class="pill">'+esc(p.category)+'</span></div>';
+    html += '<div class="row" style="margin-top:10px"><span class="muted">Available cartons</span><b class="'+(low?'red':'green')+'">'+q.toFixed(2)+'</b></div>';
+    html += '<div class="muted">'+p.pieces+' pieces/carton · Cost rate '+money(p.buyRate)+'</div>';
+    html += '<div class="muted">Stock value (at purchase rate): '+money(q*p.buyRate)+'</div>';
+    if(low) html += '<div class="red" style="font-size:11px;margin-top:6px">Low stock alert</div>';
+    html += '</div>';
+    return html;
+  }).join('');
+}
+
+function renderHome() {
+  var buy=0, sales=0, profit=0, qty=0, value=0;
+  db.purchases.forEach(function(x) { buy += x.total; });
+  db.sales.forEach(function(x) { sales += x.total; profit += x.netProfit; });
+  db.products.filter(function(p) { return p.active; }).forEach(function(p) { var q = stock(p); qty += q; value += q * p.buyRate; });
+  
+  $('stockValue').textContent = money(value);
+  $('countProducts').textContent = db.products.filter(function(p) { return p.active; }).length;
+  $('countStock').textContent = qty.toFixed(2);
+  $('totalPurchase').textContent = money(buy);
+  $('totalSales').textContent = money(sales);
+  $('totalProfit').textContent = money(profit);
+  $('lowStock').textContent = db.products.filter(function(p) { return p.active && stock(p) <= p.alert; }).length;
+  
+  var recent = db.purchases.map(function(x) { return Object.assign({}, x, {type:'Purchase'}); })
+    .concat(db.sales.map(function(x) { return Object.assign({}, x, {type:'Sale'}); }))
+    .sort(function(a,b) { return b.created - a.created; }).slice(0,5);
+    
+  if(!recent.length) {
+    $('recent').innerHTML = '<div class="empty">No activity yet. Add a product, then record a purchase.</div>';
+    return;
+  }
+  $('recent').innerHTML = recent.map(function(x) {
+    return '<div class="card"><div class="row"><b>'+esc(x.product)+'</b><span class="pill">'+x.type+'</span></div>' +
+           '<div class="muted">'+x.date+' · '+x.qty.toFixed(2)+' carton(s)</div>' +
+           '<div class="row" style="margin-top:7px"><b>'+money(x.total)+'</b><span class="'+(x.type==='Sale'?'green':'')+'">'+(x.type==='Sale'?'Net profit '+money(x.netProfit):'Stock added')+'</span></div></div>';
+  }).join('');
+}
+
+function renderHistory() {
+  var f = $('historyFilter').value;
+  var all = db.purchases.map(function(x) { return Object.assign({}, x, {type:'Purchase'}); })
+    .concat(db.sales.map(function(x) { return Object.assign({}, x, {type:'Sale'}); }))
+    .sort(function(a,b) { return b.created - a.created; });
+  if(f !== 'all') all = all.filter(function(x) { return x.type.toLowerCase() === f; });
+  
+  if(!all.length) {
+    $('historyList').innerHTML = '<div class="empty">No transactions found.</div>';
+    return;
+  }
+  $('historyList').innerHTML = all.map(function(x) {
+    return '<div class="card"><div class="row"><b>'+esc(x.product)+'</b><span class="pill">'+x.type+'</span></div>' +
+           '<div class="muted">'+x.date+' · '+x.qty.toFixed(2)+' carton(s) · '+esc(x.payment)+'</div>' +
+           '<div class="row" style="margin-top:8px"><span>'+money(x.total)+'</span><span class="'+(x.type==='Sale'?'green':'')+'">'+(x.type==='Sale'?'Net profit '+money(x.netProfit):'Purchase')+'</span></div></div>';
+  }).join('');
+}
+$('historyFilter').onchange = renderHistory;
+
+function renderReports() {
+  var m = $('reportMonth').value || today.slice(0,7);
+  var p = db.purchases.filter(function(x) { return x.date.indexOf(m) === 0; });
+  var s = db.sales.filter(function(x) { return x.date.indexOf(m) === 0; });
+  var pb=0, ss=0, pr=0;
+  p.forEach(function(x) { pb += x.total; });
+  s.forEach(function(x) { ss += x.total; pr += x.netProfit; });
+  
+  $('reportResult').innerHTML = '<div class="row"><span>Purchases</span><b>'+money(pb)+'</b></div>' +
+    '<div class="row"><span>Sales</span><b>'+money(ss)+'</b></div>' +
+    '<div class="row"><span>Net profit</span><b class="green">'+money(pr)+'</b></div>' +
+    '<div class="row"><span>Transactions</span><b>'+(p.length+s.length)+'</b></div>';
+}
+$('reportMonth').onchange = renderReports;
+
+function gstCalc() {
+  var a = num('gstAmount'), r = num('gstRate'), inc = $('gstMode').value === 'inclusive';
+  var tax = inc ? a*r/(100+r) : a*r/100;
+  $('gstTax').textContent = money(tax);
+  $('gstBase').textContent = money(inc ? a-tax : a);
+  $('gstTotal').textContent = money(inc ? a : a+tax);
+}
+['gstAmount','gstRate','gstMode'].forEach(function(id) { $(id).oninput = gstCalc; });
+
+function download(blob, name) {
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(function() { URL.revokeObjectURL(a.href); }, 1000);
+}
+
+$('exportCsv').onclick = function() {
+  var rows = [['Type','Channel','Date','Product','Category','Qty cartons','Rate','Total','Profit','Payment','Note']];
+  db.purchases.forEach(function(x) { rows.push(['Purchase','',x.date,x.product,x.category,x.qty,x.rate,x.total,'',x.payment,x.note]); });
+  db.sales.forEach(function(x) { rows.push(['Sale',x.channel||'',x.date,x.product,x.category,x.qty,x.rate,x.total,x.profit,x.payment,x.note]); });
+  var csv = rows.map(function(r) { return r.map(function(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; }).join(','); }).join('\n');
+  download(new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8'}), 'ps-enterprises-ledger.csv');
+};
+
+$('backup').onclick = function() { download(new Blob([JSON.stringify(db,null,2)], {type:'application/json'}), 'ps-enterprises-backup.json'); };
+$('restoreBtn').onclick = function() { $('restoreFile').click(); };
+$('restoreFile').onchange = async function(e) {
+  try {
+    var v = JSON.parse(await e.target.files[0].text());
+    if(!v.products || !v.purchases || !v.sales) throw 0;
+    if(confirm('Restore backup? Current data will be replaced.')) {
+      db = v; renderHome(); showAlert('Backup restored.');
+    }
+  } catch(_) { showAlert('Invalid backup file.'); }
+};
+
+if('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
+  navigator.serviceWorker.register('./sw.js').then(function(reg) { reg.update(); }).catch(function() {});
+}
+
+refreshSelectors(); renderHome(); renderProducts(); renderStock(); gstCalc(); purchasePreview(); salesPreview();
+
+(async function() {
+  if (!sb) return;
+  try {
+    var res = await sb.auth.getSession();
+    if(res.data && res.data.session) await enterSession(res.data.session);
+    else showAuth();
+  } catch(e) { showAuth(e.message || 'Please sign in.'); }
+})();
+
+setInterval(function() { if(session) loadCloud(); }, 12000);
+</script>
+</body>
+</html>w
