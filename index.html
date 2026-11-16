@@ -36,7 +36,7 @@ hr{border:0;border-top:1px solid var(--line);margin:12px 0}footer{text-align:cen
 <h1>P.S ENTERPRISES</h1><p>Cloud inventory · Admin and Staff sign-in</p>
 <label>Email address</label><input id="loginEmail" type="email" autocomplete="username" placeholder="name@example.com">
 <label>Password</label><input id="loginPassword" type="password" autocomplete="current-password" placeholder="Password">
-<button type="button" class="primary" id="loginBtn" onclick="window.doLogin()">SIGN IN</button>
+<button class="primary" id="loginBtn" onclick="doLogin()">SIGN IN</button>
 <div id="authMessage" class="muted" style="margin-top:12px; font-weight:bold; color: red;"></div>
 <p style="margin-top:18px">Accounts are created by the business administrator. Contact Admin if you need access.</p>
 </div></div>
@@ -95,8 +95,10 @@ hr{border:0;border-top:1px solid var(--line);margin:12px 0}footer{text-align:cen
 <div class="grid"><div><label>Cartons sold</label><input id="salesQty" type="number" min="0" step="any" value="1"></div><div><label>Pieces (Loose)</label><input id="salesPieces" type="number" min="0" step="any" value="0"></div><div style="grid-column: 1 / -1"><label id="salesRateLabel">Retail selling rate / piece (₹)</label><input id="salesRate" type="number" min="0" step="any"></div></div>
 <label>Other expenses (₹)</label><input id="salesExpense" type="number" min="0" value="0">
 <label>Sales date</label><input id="salesDate" type="date">
-<label>Payment received by</label><select id="salesPayment"><option>Cash</option><option>UPI</option><option>Bank transfer</option><option>Credit / Due</option></select>
-<div id="creditCustomerWrap" class="hidden"><label>Credit customer</label><select id="saleCustomer"></select><label>Amount received now (₹)</label><input id="saleReceivedNow" type="number" min="0" step="any" value="0"><p class="muted">The remaining sale amount will be added to the customer due.</p></div><label>Customer / note</label><input id="salesNote" placeholder="Customer or payment note">
+<label>Customer type</label><select id="saleCustomerType"><option value="walkin">Walk-in / Unregistered Customer</option><option value="registered">Registered Customer</option></select>
+<div id="registeredCustomerWrap" class="hidden"><label>Select registered customer</label><select id="saleCustomer"></select><p class="muted">Registered customer sales are recorded in the permanent customer ledger.</p></div>
+<label>Payment received by</label><select id="salesPayment"><option>Cash</option><option>UPI</option><option>Bank transfer</option><option>Credit / Due</option><option>Partial Payment</option></select>
+<div id="creditCustomerWrap" class="hidden"><label>Amount received now (₹)</label><input id="saleReceivedNow" type="number" min="0" step="any" value="0"><p class="muted">Only the unpaid balance remains due. Walk-in customers cannot be given credit.</p></div><label>Customer / note</label><input id="salesNote" placeholder="Customer or payment note">
 <div class="card" style="background:#f7f9fd;box-shadow:none"><div class="row"><span class="muted">Total sale</span><b id="salesTotal">₹0</b></div><div class="row" style="margin-top:8px"><span class="muted">Estimated net profit</span><b class="green" id="salesProfit">₹0</b></div></div>
 <button class="primary" id="saveSale">SAVE SALE & UPDATE STOCK</button></div></section>
 
@@ -326,6 +328,7 @@ function tab(id) {
   if(id==='history') renderHistory();
   if(id==='reports') renderReports();
   if(id==='purchase'||id==='sales') refreshSelectors();
+  if(id==='sales') updateSaleCustomerUI();
   if(id==='khata') renderCustomers();
 }
 document.querySelectorAll('nav button').forEach(function(b) { b.onclick = function() { tab(b.dataset.tab); }; });
@@ -427,9 +430,18 @@ $('saveCustomerPayment').onclick = async function(){
     await loadCloud(); showAlert('Customer payment saved.');
   } catch(e){ showAlert(e.message || String(e)); }
 };
-$('salesPayment').onchange = function(){
-  $('creditCustomerWrap').classList.toggle('hidden', $('salesPayment').value !== 'Credit / Due');
-};
+function updateSaleCustomerUI() {
+  var registered = $('saleCustomerType').value === 'registered';
+  var payment = $('salesPayment').value;
+  $('registeredCustomerWrap').classList.toggle('hidden', !registered);
+  $('creditCustomerWrap').classList.toggle('hidden', !(registered && (payment === 'Credit / Due' || payment === 'Partial Payment')));
+  if (!registered && (payment === 'Credit / Due' || payment === 'Partial Payment')) {
+    $('salesPayment').value = 'Cash';
+    showAlert('Walk-in sales are cash/UPI only. Choose a registered customer for credit.');
+  }
+}
+$('saleCustomerType').onchange = updateSaleCustomerUI;
+$('salesPayment').onchange = updateSaleCustomerUI;
 
 function fillPurchase() { var p = product($('purchaseProduct').value); $('purchaseRate').value = p ? p.buyRate : ''; purchasePreview(); }
 function fillSales() { var p = product($('salesProduct').value), channel = $('salesChannel').value, kind = channel==='Wholesale' ? 'wholesaleRate' : 'retailRate'; $('salesRate').value = p ? (p[kind] != null ? p[kind] : (p.sellRate || 0)) : ''; $('salesRateLabel').textContent = channel + ' selling rate / piece (₹)'; $('availableStock').textContent = p ? stock(p).toFixed(2) + ' cartons' : '0 cartons'; salesPreview(); }
@@ -438,6 +450,7 @@ $('purchaseProduct').onchange = fillPurchase;
 $('salesProduct').onchange = fillSales;
 $('salesChannel').onchange = fillSales;
 $('salesPayment').dispatchEvent(new Event('change'));
+updateSaleCustomerUI();
 
 function purchasePreview() { var p = product($('purchaseProduct').value), c = num('purchaseQty'), pcs = num('purchasePieces'), q = p ? c + (pcs / (p.pieces || 1)) : c; $('purchaseTotal').textContent = money(q * num('purchaseRate')); }
 ['purchaseQty','purchasePieces','purchaseRate'].forEach(function(id) { $(id).oninput = purchasePreview; });
@@ -542,39 +555,47 @@ $('saveSale').onclick = async function() {
     if(q <= 0) throw new Error('Enter a valid quantity.');
     var rate_per_pc = num('salesRate'), channel = $('salesChannel').value.toLowerCase(), db_rate = rate_per_pc * (p.pieces || 1);
     var noteVal = $('salesNote').value, expenseVal = num('salesExpense');
-    var isCredit = $('salesPayment').value === 'Credit / Due';
-    var customerId = isCredit ? $('saleCustomer').value : null;
-    if(isCredit && !customerId) throw new Error('Select a customer for credit sale.');
+    var customerType = $('saleCustomerType').value;
+    var isRegistered = customerType === 'registered';
+    var paymentMode = $('salesPayment').value;
+    var isCredit = paymentMode === 'Credit / Due' || paymentMode === 'Partial Payment';
+    var customerId = isRegistered ? $('saleCustomer').value : null;
+    if(isRegistered && !customerId) throw new Error('Select a registered customer.');
+    if(isCredit && !isRegistered) throw new Error('Walk-in customers cannot be given credit. Select a registered customer.');
     var totalPieces = (c * (p.pieces || 1)) + pcs;
     var saleAmount = totalPieces * rate_per_pc;
-    var receivedNow = isCredit ? Number($('saleReceivedNow').value || 0) : 0;
+    var receivedNow = isCredit ? Number($('saleReceivedNow').value || 0) : saleAmount;
     if(receivedNow < 0 || receivedNow > saleAmount) throw new Error('Received amount cannot exceed sale total.');
-    var note = [pcs>0 ? (noteVal ? noteVal + ' | ' + pcs + ' loose pieces' : pcs + ' loose pieces') : noteVal, expenseVal ? 'Other expenses: ' + expenseVal : null].filter(Boolean).join(' | ') || null;
+    if(paymentMode === 'Credit / Due' && receivedNow !== 0) throw new Error('For full credit, amount received now must be 0. Choose Partial Payment to record part payment.');
+    var customerName = isRegistered ? ((db.customers.find(function(x){return x.id===customerId;}) || {}).name || '') : '';
+    var note = [isRegistered ? 'Customer: ' + customerName : 'Walk-in / Unregistered Customer', pcs>0 ? (noteVal ? noteVal + ' | ' + pcs + ' loose pieces' : pcs + ' loose pieces') : noteVal, expenseVal ? 'Other expenses: ' + expenseVal : null].filter(Boolean).join(' | ') || null;
     var res = await sb.from('transactions').insert({
       product_id:p.id, type:'sale', channel:channel, qty_cartons:q, rate:db_rate,
-      expense:expenseVal, payment:$('salesPayment').value, note:note,
+      expense:expenseVal, payment:paymentMode, note:note,
       created_at:new Date($('salesDate').value+'T12:00:00').toISOString()
     }).select('id,total').single();
     if(res.error) throw res.error;
-    if(isCredit) {
+    if(isRegistered) {
+      var actualSaleTotal = Number(res.data.total || saleAmount);
       var led = await sb.from('customer_ledger').insert({
         customer_id:customerId, transaction_id:res.data.id, entry_type:'sale',
-        amount:Number(res.data.total), note:'Credit sale: '+p.name, created_by:session.user.id
+        amount:actualSaleTotal, note:'Sale: '+p.name, created_by:session.user.id
       });
       if(led.error) throw new Error('Sale saved, but customer ledger update failed: '+led.error.message);
-      if(receivedNow > 0) {
+      var actualReceived = isCredit ? receivedNow : actualSaleTotal;
+      if(actualReceived > 0) {
         var pay = await sb.from('customer_ledger').insert({
           customer_id:customerId, transaction_id:res.data.id, entry_type:'payment',
-          amount:receivedNow, payment_method:$('salesPayment').value,
-          note:'Part payment: '+p.name, created_by:session.user.id
+          amount:actualReceived, payment_method:paymentMode === 'Credit / Due' ? 'Not received' : paymentMode,
+          note:(isCredit ? 'Part payment: ' : 'Sale payment: ')+p.name, created_by:session.user.id
         });
         if(pay.error) throw new Error('Sale saved, but received payment could not be recorded: '+pay.error.message);
       }
     }
     $('salesNote').value = ''; $('salesQty').value = '1'; $('salesPieces').value = '0';
-    $('salesExpense').value = '0'; $('saleReceivedNow').value = '0';
+    $('salesExpense').value = '0'; $('saleReceivedNow').value = '0'; $('salesPayment').value = 'Cash'; updateSaleCustomerUI();
     await loadCloud();
-    showAlert(isCredit ? 'Credit sale and customer balance saved.' : 'Sale saved. Shared stock reduced.');
+    showAlert(isRegistered ? 'Registered customer sale saved; ledger balance updated.' : 'Walk-in sale saved. Shared stock reduced.');
     tab('home');
   } catch(e) { showAlert(e.message||e) }
 };
