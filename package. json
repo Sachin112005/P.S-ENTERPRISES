@@ -1,0 +1,10 @@
+{
+  "name": "ps-enterprises",
+  "version": "1.0.0",
+  "description": "P.S Enterprises App",
+  "dependencies": {
+    "@capacitor/android": "^5.0.0",
+    "@capacitor/cli": "^5.0.0",
+    "@capacitor/core": "^5.0.0"
+  }
+}
