@@ -2,7 +2,9 @@
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0B2E1F"><meta name="description" content="P.S ENTERPRISES inventory and business manager">
-<link rel="manifest" href="manifest.webmanifest"><title>P.S ENTERPRISES</title><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="manifest" href="manifest.webmanifest"><title>P.S ENTERPRISES</title>
+<!-- CDN Link for Supabase -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{--ink:#17243a;--muted:#778397;--navy:#0B2E1F;--blue:#0B2E1F;--blue2:#e6f4ea;--green:#16a34a;--red:#c04b4b;--bg:#f4f9f6;--line:#e0e9e4;--shadow:0 8px 28px rgba(11,46,31,.06)}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -29,13 +31,16 @@ hr{border:0;border-top:1px solid var(--line);margin:12px 0}footer{text-align:cen
 .auth-card h1{font-size:21px;margin:0 0 5px;color:var(--ink)}.auth-card p{font-size:12px;color:var(--muted);line-height:1.5}
 #syncStatus{font-size:10px;color:#c4d2e8;margin-top:5px}.userbar{display:flex;gap:8px;align-items:center}
 </style></head><body>
+
 <div class="auth-wrap" id="authScreen"><div class="auth-card">
 <h1>P.S ENTERPRISES</h1><p>Cloud inventory · Admin and Staff sign-in</p>
 <label>Email address</label><input id="loginEmail" type="email" autocomplete="username" placeholder="name@example.com">
 <label>Password</label><input id="loginPassword" type="password" autocomplete="current-password" placeholder="Password">
-<button class="primary" id="loginBtn">SIGN IN</button><div id="authMessage" class="muted" style="margin-top:12px"></div>
+<button class="primary" id="loginBtn" onclick="doLogin()">SIGN IN</button>
+<div id="authMessage" class="muted" style="margin-top:12px; font-weight:bold; color: red;"></div>
 <p style="margin-top:18px">Accounts are created by the business administrator. Contact Admin if you need access.</p>
 </div></div>
+
 <div class="auth-wrap hidden" id="editModal" style="z-index:30">
 <div class="auth-card">
 <h2 style="margin-top:0" id="editTitle">Edit Rates</h2>
@@ -50,8 +55,11 @@ hr{border:0;border-top:1px solid var(--line);margin:12px 0}footer{text-align:cen
 </div>
 </div>
 </div>
+
 <header><div class="top"><div><div class="brand">P.S ENTERPRISES</div><div class="tag">INVENTORY & BUSINESS MANAGER</div></div><div class="userbar"><div class="date" id="today"></div><button class="soft" id="logoutBtn">Log out</button></div></div><div class="hero"><small>Current stock value</small><strong id="stockValue">₹0</strong><span class="muted" style="color:#c4d2e8">Cloud inventory overview</span><div id="syncStatus">Not connected</div></div></header>
+
 <nav><button class="active" data-tab="home">Overview</button><button data-tab="products">Products</button><button data-tab="purchase">Purchase</button><button data-tab="sales">Sales</button><button data-tab="stock">Stock</button><button data-tab="history">History</button><button data-tab="reports">Reports</button><button data-tab="gst">GST</button></nav>
+
 <main>
 <section id="home"><h2>Business Overview</h2><div class="grid">
 <div class="card"><div class="k">PRODUCTS</div><div class="v" id="countProducts">0</div></div>
@@ -61,6 +69,7 @@ hr{border:0;border-top:1px solid var(--line);margin:12px 0}footer{text-align:cen
 <div class="card"><div class="k">NET PROFIT</div><div class="v green" id="totalProfit">₹0</div></div>
 <div class="card"><div class="k">LOW STOCK ITEMS</div><div class="v" id="lowStock">0</div></div>
 </div><h2>Recent Activity</h2><div id="recent"></div><div class="notice">Products, purchases, sales and stock are stored in the shared cloud database. Changes made on either signed-in phone refresh automatically.</div></section>
+
 <section id="products" class="hidden"><h2>Product Catalogue</h2><p class="note">Add each product once. Select it later in Purchase or Sales.</p><div class="panel">
 <label>Product name</label><input id="prodName" placeholder="e.g. Rajnigandha">
 <label>Category</label><select id="prodCategory"><option>Pan Masala</option><option>Betel Leaf</option><option>Other</option></select>
@@ -69,6 +78,7 @@ hr{border:0;border-top:1px solid var(--line);margin:12px 0}footer{text-align:cen
 <div><label>Wholesale sale rate / piece (₹)</label><input id="prodWholesale" type="number" min="0" value="0"></div>
 <div><label>Pieces per carton</label><input id="prodPieces" type="number" min="1" value="60"></div><div><label>Low-stock alert (cartons)</label><input id="prodAlert" type="number" min="0" value="1"></div></div>
 <button class="primary" id="saveProduct">SAVE PRODUCT</button></div><h2>Saved Products</h2><div id="productList"></div></section>
+
 <section id="purchase" class="hidden"><h2>New Purchase</h2><p class="note">Select a saved product. Rates will fill automatically and stock will increase.</p><div class="panel">
 <label>Select product</label><select id="purchaseProduct"></select>
 <div class="grid"><div><label>Cartons purchased</label><input id="purchaseQty" type="number" min="0" step="any" value="1"></div><div><label>Pieces (Loose)</label><input id="purchasePieces" type="number" min="0" step="any" value="0"></div><div style="grid-column: 1 / -1"><label>Purchase rate / carton (₹)</label><input id="purchaseRate" type="number" min="0" step="any"></div></div>
@@ -77,6 +87,7 @@ hr{border:0;border-top:1px solid var(--line);margin:12px 0}footer{text-align:cen
 <label>Supplier / note</label><input id="purchaseNote" placeholder="Supplier or payment reference">
 <div class="card" style="background:#f7f9fd;box-shadow:none"><div class="row"><span class="muted">Total purchase</span><b id="purchaseTotal">₹0</b></div></div>
 <button class="primary" id="savePurchase">SAVE PURCHASE & UPDATE STOCK</button></div></section>
+
 <section id="sales" class="hidden"><h2>New Sale</h2><p class="note">Choose a product. Available stock and selling rate appear automatically.</p><div class="panel">
 <label>Select product</label><select id="salesProduct"></select>
 <div class="card" style="background:#f7f9fd;box-shadow:none"><div class="row"><span class="muted">Available stock</span><b id="availableStock">0 cartons</b></div></div>
@@ -88,59 +99,54 @@ hr{border:0;border-top:1px solid var(--line);margin:12px 0}footer{text-align:cen
 <label>Customer / note</label><input id="salesNote" placeholder="Customer or payment note">
 <div class="card" style="background:#f7f9fd;box-shadow:none"><div class="row"><span class="muted">Total sale</span><b id="salesTotal">₹0</b></div><div class="row" style="margin-top:8px"><span class="muted">Estimated net profit</span><b class="green" id="salesProfit">₹0</b></div></div>
 <button class="primary" id="saveSale">SAVE SALE & UPDATE STOCK</button></div></section>
+
 <section id="stock" class="hidden"><h2>Live Stock</h2><p class="note">Stock increases with purchases and decreases with sales.</p><div id="stockList"></div></section>
+
 <section id="history" class="hidden"><h2>Transaction History</h2><div class="row"><select id="historyFilter"><option value="all">All transactions</option><option value="purchase">Purchases</option><option value="sale">Sales</option></select><button class="soft" id="exportCsv">Export CSV</button></div><div id="historyList" style="margin-top:10px"></div><div class="row"><button class="soft" id="backup">Download Backup</button><button class="soft hidden" id="restoreBtn">Restore Backup</button></div><input type="file" id="restoreFile" accept=".json" class="hidden"></section>
+
 <section id="reports" class="hidden"><h2>Monthly Reports</h2><div class="panel"><label>Select month</label><input type="month" id="reportMonth"><div id="reportResult" style="margin-top:13px"></div></div></section>
+
 <section id="gst" class="hidden"><h2>GST Estimate</h2><div class="notice">Reference calculator only. Verify HSN and current applicable rate. It does not file GST returns or determine legal tax liability. Do not claim ITC without a valid tax invoice.</div><div class="panel"><label>Amount (₹)</label><input id="gstAmount" type="number" value="66900"><label>GST rate (%)</label><input id="gstRate" type="number" value="0"><label>Amount type</label><select id="gstMode"><option value="inclusive">GST included</option><option value="exclusive">GST extra</option></select><div class="row" style="margin-top:15px"><span>Estimated GST</span><b id="gstTax">₹0</b></div><div class="row"><span>Taxable value</span><b id="gstBase">₹66,900</b></div><div class="row"><span>Total amount</span><b id="gstTotal">₹66,900</b></div></div></section>
 <footer>P.S ENTERPRISES · INVENTORY & BUSINESS LEDGER</footer></main>
+
 <script>
-window.onerror = function(msg, url, line) {
-  var errBox = document.getElementById('authMessage');
-  if(errBox) {
-    errBox.style.color = 'red';
-    errBox.innerHTML = "Error: " + msg + " (Line: " + line + ")";
+// 1. Check if Supabase loaded successfully
+window.onload = function() {
+  if (typeof window.supabase === 'undefined') {
+    document.getElementById('authMessage').innerHTML = "Error: Internet slow hai ya Supabase block ho gaya hai. Page ko refresh karein.";
   }
-  return false;
 };
 
+// 2. Premium Alert Function
 function showAlert(msg) {
   var t = document.createElement('div');
-  t.style.position = 'fixed';
-  t.style.bottom = '24px';
-  t.style.left = '50%';
-  t.style.transform = 'translateX(-50%) translateY(20px)';
-  t.style.background = '#0B2E1F';
-  t.style.color = '#fff';
-  t.style.padding = '14px 20px';
-  t.style.borderRadius = '12px';
-  t.style.zIndex = '9999';
-  t.style.fontSize = '14px';
-  t.style.fontWeight = '600';
-  t.style.boxShadow = '0 8px 24px rgba(0,0,0,0.2)';
-  t.style.textAlign = 'center';
-  t.style.width = '85%';
-  t.style.maxWidth = '400px';
-  t.style.opacity = '0';
-  t.style.transition = 'all 0.3s ease';
-  t.style.borderLeft = '4px solid #16a34a';
-  t.innerText = msg;
-  document.body.appendChild(t);
+  t.style.position = 'fixed'; t.style.bottom = '24px'; t.style.left = '50%'; t.style.transform = 'translateX(-50%) translateY(20px)';
+  t.style.background = '#0B2E1F'; t.style.color = '#fff'; t.style.padding = '14px 20px'; t.style.borderRadius = '12px';
+  t.style.zIndex = '9999'; t.style.fontSize = '14px'; t.style.fontWeight = '600'; t.style.boxShadow = '0 8px 24px rgba(0,0,0,0.2)';
+  t.style.textAlign = 'center'; t.style.width = '85%'; t.style.maxWidth = '400px'; t.style.opacity = '0';
+  t.style.transition = 'all 0.3s ease'; t.style.borderLeft = '4px solid #16a34a';
+  t.innerText = msg; document.body.appendChild(t);
   setTimeout(function() { t.style.opacity = '1'; t.style.transform = 'translateX(-50%) translateY(0)'; }, 10);
   setTimeout(function() { t.style.opacity = '0'; t.style.transform = 'translateX(-50%) translateY(20px)'; setTimeout(function() { t.remove(); }, 300); }, 3500);
 }
 
-function $(id) { return document.getElementById(id); }
-function money(n) { return '₹' + (Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 }); }
-function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+var $ = function(id) { return document.getElementById(id); };
+var money = function(n) { return '₹' + (Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 }); };
+var esc = function(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
 
 var today = new Date().toISOString().slice(0,10);
 try {
   today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 } catch(e) { console.log("Date fallback used"); }
 
+// 3. Initialize Supabase
 var SUPABASE_URL = 'https://mgadxfkfsxkwiofgimrj.supabase.co';
 var SUPABASE_KEY = 'sb_publishable_n1uBuseXPEZS6vEptaAzOg_pS2Wx3co';
-var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+var sb = null;
+if (window.supabase) {
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+}
+
 var session = null, profile = null, db = {products:[],purchases:[],sales:[]}, refreshBusy = false;
 
 function num(id) { return Math.max(0, Number($(id).value) || 0); }
@@ -216,7 +222,12 @@ function applyRoleUI() {
   document.querySelectorAll('#productList button').forEach(function(b) { b.classList.toggle('hidden', !admin); });
 }
 
-$('loginBtn').onclick = async function() {
+// 4. Global Login Function
+window.doLogin = async function() {
+  if (!sb) {
+    $('authMessage').textContent = 'Internet issue! Supabase load nahi hua. Page refresh karein.';
+    return;
+  }
   var email = $('loginEmail').value.trim();
   var password = $('loginPassword').value;
   if(!email || !password) {
@@ -225,30 +236,34 @@ $('loginBtn').onclick = async function() {
   }
   $('loginBtn').disabled = true;
   $('authMessage').textContent = 'Signing in…';
+  $('authMessage').style.color = 'gray';
   try {
     var res = await sb.auth.signInWithPassword({email: email, password: password});
     if(res.error) throw res.error;
     await enterSession(res.data.session);
   } catch(e) {
     $('authMessage').textContent = e.message || 'Login failed.';
+    $('authMessage').style.color = 'red';
   } finally {
     $('loginBtn').disabled = false;
   }
 };
 
 $('logoutBtn').onclick = async function() {
-  await sb.auth.signOut();
+  if(sb) await sb.auth.signOut();
   session = null; profile = null;
   showAuth('Signed out.');
 };
 
-sb.auth.onAuthStateChange(async function(_event, sess) {
-  if(sess && !session) {
-    try { await enterSession(sess) } catch(e) { showAuth(e.message) }
-  } else if(!sess && session) {
-    session = null; profile = null; showAuth();
-  }
-});
+if(sb) {
+  sb.auth.onAuthStateChange(async function(_event, sess) {
+    if(sess && !session) {
+      try { await enterSession(sess) } catch(e) { showAuth(e.message) }
+    } else if(!sess && session) {
+      session = null; profile = null; showAuth();
+    }
+  });
+}
 
 async function requireUser() { if(!session) throw new Error('Please sign in first.'); }
 
@@ -527,6 +542,7 @@ if('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
 refreshSelectors(); renderHome(); renderProducts(); renderStock(); gstCalc(); purchasePreview(); salesPreview();
 
 (async function() {
+  if (!sb) return;
   try {
     var res = await sb.auth.getSession();
     if(res.data && res.data.session) await enterSession(res.data.session);
