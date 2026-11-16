@@ -1,0 +1,8 @@
+{
+  "appId": "com.psenterprises.inventory",
+  "appName": "P.S ENTERPRISES",
+  "webDir": ".",
+  "server": {
+    "androidScheme": "https"
+  }
+}
