@@ -330,7 +330,7 @@ async function loadCloud() {
       var p = db.products.find(function(x) { return x.id === t.product_id; });
       var pName = p ? p.name : 'Product';
       var pCat = p ? p.category : '';
-      var item = {id:t.id, created:new Date(t.created_at).getTime(), productId:t.product_id, product:pName, category:pCat, date:(t.created_at||'').slice(0,10), qty:Number(t.qty_cartons), rate:Number(t.rate), total:Number(t.total), profit:Number(t.profit||0), netProfit:Number(t.net_profit != null ? t.net_profit : (t.profit || 0)), payment:t.payment||'', note:t.note||'', channel:t.channel==='retail'?'Retail':t.channel==='wholesale'?'Wholesale':''};
+      var item = {id:t.id, created:new Date(t.created_at).getTime(), productId:t.product_id, product:pName, category:pCat, piecesPerCarton:p?Number(p.pieces)||1:1, productPieces:Number(t.qty_cartons)*(p?(Number(p.pieces)||1):1), date:(t.created_at||'').slice(0,10), qty:Number(t.qty_cartons), rate:Number(t.rate), total:Number(t.total), profit:Number(t.profit||0), netProfit:Number(t.net_profit != null ? t.net_profit : (t.profit || 0)), payment:t.payment||'', note:t.note||'', channel:t.channel==='retail'?'Retail':t.channel==='wholesale'?'Wholesale':''};
       if(t.type === 'purchase') db.purchases.push(item);
       else db.sales.push(item);
     });
@@ -841,8 +841,12 @@ function renderHistory() {
     return;
   }
   $('historyList').innerHTML = all.map(function(x) {
+    var quantityLabel = x.type === 'Sale'
+      ? Math.round(x.productPieces).toLocaleString('en-IN')+' pcs sold'
+      : x.qty.toLocaleString('en-IN',{maximumFractionDigits:2})+' cartons purchased';
+    var channelLabel = x.channel ? ' · '+esc(x.channel) : '';
     return '<div class="card"><div class="row"><b>'+esc(x.product)+'</b><span class="pill">'+x.type+'</span></div>' +
-           '<div class="muted">'+x.date+' · '+x.qty.toFixed(2)+' carton(s) · '+esc(x.payment)+'</div>' +
+           '<div class="muted">'+x.date+' · '+quantityLabel+channelLabel+' · '+esc(x.payment)+'</div>' +
            '<div class="row" style="margin-top:8px"><span>'+money(x.total)+'</span><span class="'+(x.type==='Sale'?'green':'')+'">'+(x.type==='Sale'?'Net profit '+money(x.netProfit):'Purchase')+'</span></div></div>';
   }).join('');
 }
