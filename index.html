@@ -89,19 +89,18 @@ hr{border:0;border-top:1px solid var(--line);margin:12px 0}footer{text-align:cen
 <div class="card" style="background:#f7f9fd;box-shadow:none"><div class="row"><span class="muted">Total bill</span><b id="purchaseTotal">₹0</b></div><div class="muted" id="purchaseItemCount">0 items</div></div>
 <button class="primary" id="savePurchase">SAVE PURCHASE BILL & UPDATE STOCK</button></div></section>
 
-<section id="sales" class="hidden"><h2>New Sale</h2><p class="note">Choose a product. Available stock and selling rate appear automatically.</p><div class="panel">
-<label>Select product</label><select id="salesProduct"></select>
-<div class="card" style="background:#f7f9fd;box-shadow:none"><div class="row"><span class="muted">Available stock</span><b id="availableStock">0 cartons</b></div></div>
+<section id="sales" class="hidden"><h2>New Sales Bill</h2><p class="note">Choose one customer and add multiple products to the same bill.</p><div class="panel">
+<div class="row"><b>Sale items</b><button class="soft" type="button" id="addSaleItem">+ ADD ITEM</button></div><div id="saleItems"></div>
 <label>Sales channel</label><select id="salesChannel"><option>Retail</option><option>Wholesale</option></select>
-<div class="grid"><div><label>Cartons sold</label><input id="salesQty" type="number" min="0" step="any" value="1"></div><div><label>Pieces (Loose)</label><input id="salesPieces" type="number" min="0" step="any" value="0"></div><div style="grid-column: 1 / -1"><label id="salesRateLabel">Retail selling rate / piece (₹)</label><input id="salesRate" type="number" min="0" step="any"></div></div>
 <label>Other expenses (₹)</label><input id="salesExpense" type="number" min="0" value="0">
 <label>Sales date</label><input id="salesDate" type="date">
 <label>Customer type</label><select id="saleCustomerType"><option value="walkin">Walk-in / Unregistered Customer</option><option value="registered">Registered Customer</option></select>
 <div id="registeredCustomerWrap" class="hidden"><label>Select registered customer</label><select id="saleCustomer"></select><p class="muted">Registered customer sales are recorded in the permanent customer ledger.</p></div>
 <label>Payment received by</label><select id="salesPayment"><option>Cash</option><option>UPI</option><option>Bank transfer</option><option>Credit / Due</option><option>Partial Payment</option></select>
-<div id="creditCustomerWrap" class="hidden"><label>Amount received now (₹)</label><input id="saleReceivedNow" type="number" min="0" step="any" value="0"><p class="muted">Only the unpaid balance remains due. Walk-in customers cannot be given credit.</p></div><label>Customer / note</label><input id="salesNote" placeholder="Customer or payment note">
-<div class="card" style="background:#f7f9fd;box-shadow:none"><div class="row"><span class="muted">Total sale</span><b id="salesTotal">₹0</b></div><div class="row" style="margin-top:8px"><span class="muted">Estimated net profit</span><b class="green" id="salesProfit">₹0</b></div></div>
-<button class="primary" id="saveSale">SAVE SALE & UPDATE STOCK</button></div></section>
+<div id="creditCustomerWrap" class="hidden"><label>Amount received now (₹)</label><input id="saleReceivedNow" type="number" min="0" step="any" value="0"><p class="muted">Enter the total amount received for this bill.</p></div>
+<label>Customer / bill note</label><input id="salesNote" placeholder="Customer name or bill reference">
+<div class="card" style="background:#f7f9fd;box-shadow:none"><div class="row"><span class="muted">Total bill</span><b id="salesTotal">₹0</b></div><div class="row" style="margin-top:8px"><span class="muted">Estimated net profit</span><b class="green" id="salesProfit">₹0</b></div><div class="muted" id="saleItemCount">0 items</div></div>
+<button class="primary" id="saveSale">SAVE SALES BILL & UPDATE STOCK</button></div></section>
 
 <section id="stock" class="hidden"><h2>Live Stock</h2><p class="note">Stock increases with purchases and decreases with sales.</p><div id="stockList"></div></section>
 
@@ -498,17 +497,38 @@ $('purchaseItems').addEventListener('click',function(e){
     e.target.closest('.purchase-item').remove();purchasePreview();
   }
 });
-function fillSales() { var p = product($('salesProduct').value), channel = $('salesChannel').value, kind = channel==='Wholesale' ? 'wholesaleRate' : 'retailRate'; $('salesRate').value = p ? (p[kind] != null ? p[kind] : (p.sellRate || 0)) : ''; $('salesRateLabel').textContent = channel + ' selling rate / piece (₹)'; $('availableStock').textContent = p ? stock(p).toFixed(2) + ' cartons' : '0 cartons'; salesPreview(); }
-
-$('salesProduct').onchange = fillSales;
-$('salesChannel').onchange = fillSales;
-$('salesPayment').dispatchEvent(new Event('change'));
-updateSaleCustomerUI();
-
-addPurchaseItemRow();
-
-function salesPreview() { var p = product($('salesProduct').value), c = num('salesQty'), pcs = num('salesPieces'), total_pcs = p ? (c * (p.pieces || 1)) + pcs : pcs, rate_per_pc = num('salesRate'), cost_per_pc = p ? (p.buyRate / (p.pieces || 1)) : 0, total = total_pcs * rate_per_pc, profit = total - (total_pcs * cost_per_pc) - num('salesExpense'); $('salesTotal').textContent = money(total); $('salesProfit').textContent = money(profit); }
-['salesQty','salesPieces','salesRate','salesExpense'].forEach(function(id) { $(id).oninput = salesPreview; });
+function saleProductOptions(selected) {
+ return '<option value="">Select product</option>'+db.products.filter(function(p){return p.active;}).map(function(p){return '<option value="'+esc(p.id)+'" '+(String(p.id)===String(selected)?'selected':'')+'>'+esc(p.name)+'</option>';}).join('');
+}
+function addSaleItemRow(){
+ var row=document.createElement('div');row.className='card sale-item';row.style.background='#fbfcfe';
+ row.innerHTML='<div class="row"><b class="sale-item-title">Item</b><button type="button" class="danger remove-sale-item">REMOVE</button></div>'+
+ '<label>Product</label><select class="sale-item-product">'+saleProductOptions('')+'</select>'+
+ '<div class="muted sale-item-info" style="margin-top:6px;font-weight:700">Pieces per carton: — · Available stock: —</div>'+
+ '<div class="grid"><div><label>Cartons</label><input class="sale-item-cartons" type="number" min="0" step="any" value="1"></div><div><label>Loose pieces</label><input class="sale-item-loose" type="number" min="0" step="any" value="0"></div><div style="grid-column:1/-1"><label>Selling rate / piece (₹)</label><input class="sale-item-rate" type="number" min="0" step="any" value="0"></div></div>'+
+ '<div class="row" style="margin-top:8px"><span class="muted">Item total</span><b class="sale-item-total">₹0</b></div>';
+ $('saleItems').appendChild(row);updateSaleItemRow(row);salesPreview();
+}
+function updateSaleItemRow(row){
+ var p=product(row.querySelector('.sale-item-product').value),channel=$('salesChannel').value;
+ row.querySelector('.sale-item-info').textContent=p?('Pieces per carton: '+(p.pieces||1)+' pcs · Available stock: '+stock(p).toFixed(2)+' cartons'):'Pieces per carton: — · Available stock: —';
+ if(p&&row.dataset.loadedProduct!==String(p.id)+'|'+channel){row.querySelector('.sale-item-rate').value=channel==='Wholesale'?(p.wholesaleRate||0):(p.retailRate||0);row.dataset.loadedProduct=String(p.id)+'|'+channel;}
+ var c=Math.max(0,Number(row.querySelector('.sale-item-cartons').value)||0),loose=Math.max(0,Number(row.querySelector('.sale-item-loose').value)||0),rate=Math.max(0,Number(row.querySelector('.sale-item-rate').value)||0);
+ row.querySelector('.sale-item-total').textContent=money(p?(c*(p.pieces||1)+loose)*rate:0);row.querySelector('.sale-item-title').textContent=p?p.name:'New item';
+}
+function salesPreview(){
+ var total=0,profit=0,count=0;
+ document.querySelectorAll('.sale-item').forEach(function(row){var p=product(row.querySelector('.sale-item-product').value),c=Math.max(0,Number(row.querySelector('.sale-item-cartons').value)||0),l=Math.max(0,Number(row.querySelector('.sale-item-loose').value)||0),r=Math.max(0,Number(row.querySelector('.sale-item-rate').value)||0);
+ if(p&&(c>0||l>0)){var pcs=c*(p.pieces||1)+l,line=pcs*r;total+=line;profit+=line-pcs*(p.buyRate/(p.pieces||1));count++;}});
+ $('salesTotal').textContent=money(total);$('salesProfit').textContent=money(profit-num('salesExpense'));$('saleItemCount').textContent=count+' item'+(count===1?'':'s');
+}
+$('addSaleItem').onclick=addSaleItemRow;
+$('saleItems').addEventListener('change',function(e){var row=e.target.closest('.sale-item');if(row){updateSaleItemRow(row);salesPreview();}});
+$('saleItems').addEventListener('input',function(e){var row=e.target.closest('.sale-item');if(row){updateSaleItemRow(row);salesPreview();}});
+$('saleItems').addEventListener('click',function(e){if(e.target.classList.contains('remove-sale-item')){if(document.querySelectorAll('.sale-item').length<=1){showAlert('At least one sale item is required.');return;}e.target.closest('.sale-item').remove();salesPreview();}});
+$('salesChannel').onchange=function(){document.querySelectorAll('.sale-item').forEach(function(row){row.dataset.loadedProduct='';updateSaleItemRow(row);});salesPreview();};
+$('salesExpense').oninput=salesPreview;
+$('salesPayment').dispatchEvent(new Event('change'));updateSaleCustomerUI();addSaleItemRow();
 
 $('saveProduct').onclick = async function() {
   try {
@@ -641,57 +661,40 @@ $('savePurchase').onclick = async function() {
   }finally{$('savePurchase').disabled=false;}
 };
 
-$('saveSale').onclick = async function() {
-  try {
-    await requireUser();
-    var p = product($('salesProduct').value), c = num('salesQty'), pcs = num('salesPieces'), q = p ? c + (pcs / (p.pieces || 1)) : c;
-    if(!p) throw new Error('Add a product first.');
-    if(q <= 0) throw new Error('Enter a valid quantity.');
-    var rate_per_pc = num('salesRate'), channel = $('salesChannel').value.toLowerCase(), db_rate = rate_per_pc * (p.pieces || 1);
-    var noteVal = $('salesNote').value, expenseVal = num('salesExpense');
-    var customerType = $('saleCustomerType').value;
-    var isRegistered = customerType === 'registered';
-    var paymentMode = $('salesPayment').value;
-    var isCredit = paymentMode === 'Credit / Due' || paymentMode === 'Partial Payment';
-    var customerId = isRegistered ? $('saleCustomer').value : null;
-    if(isRegistered && !customerId) throw new Error('Select a registered customer.');
-    if(isCredit && !isRegistered) throw new Error('Walk-in customers cannot be given credit. Select a registered customer.');
-    var totalPieces = (c * (p.pieces || 1)) + pcs;
-    var saleAmount = totalPieces * rate_per_pc;
-    var receivedNow = isCredit ? Number($('saleReceivedNow').value || 0) : saleAmount;
-    if(receivedNow < 0 || receivedNow > saleAmount) throw new Error('Received amount cannot exceed sale total.');
-    if(paymentMode === 'Credit / Due' && receivedNow !== 0) throw new Error('For full credit, amount received now must be 0. Choose Partial Payment to record part payment.');
-    var customerName = isRegistered ? ((db.customers.find(function(x){return x.id===customerId;}) || {}).name || '') : '';
-    var note = [isRegistered ? 'Customer: ' + customerName : 'Walk-in / Unregistered Customer', pcs>0 ? (noteVal ? noteVal + ' | ' + pcs + ' loose pieces' : pcs + ' loose pieces') : noteVal, expenseVal ? 'Other expenses: ' + expenseVal : null].filter(Boolean).join(' | ') || null;
-    var res = await sb.from('transactions').insert({
-      product_id:p.id, type:'sale', channel:channel, qty_cartons:q, rate:db_rate,
-      expense:expenseVal, payment:paymentMode, note:note,
-      created_at:new Date($('salesDate').value+'T12:00:00').toISOString()
-    }).select('id,total').single();
-    if(res.error) throw res.error;
-    if(isRegistered) {
-      var actualSaleTotal = Number(res.data.total || saleAmount);
-      var led = await sb.from('customer_ledger').insert({
-        customer_id:customerId, transaction_id:res.data.id, entry_type:'sale',
-        amount:actualSaleTotal, note:'Sale: '+p.name, created_by:session.user.id
-      });
-      if(led.error) throw new Error('Sale saved, but customer ledger update failed: '+led.error.message);
-      var actualReceived = isCredit ? receivedNow : actualSaleTotal;
-      if(actualReceived > 0) {
-        var pay = await sb.from('customer_ledger').insert({
-          customer_id:customerId, transaction_id:res.data.id, entry_type:'payment',
-          amount:actualReceived, payment_method:paymentMode === 'Credit / Due' ? 'Not received' : paymentMode,
-          note:(isCredit ? 'Part payment: ' : 'Sale payment: ')+p.name, created_by:session.user.id
-        });
-        if(pay.error) throw new Error('Sale saved, but received payment could not be recorded: '+pay.error.message);
-      }
-    }
-    $('salesNote').value = ''; $('salesQty').value = '1'; $('salesPieces').value = '0';
-    $('salesExpense').value = '0'; $('saleReceivedNow').value = '0'; $('salesPayment').value = 'Cash'; updateSaleCustomerUI();
-    await loadCloud();
-    showAlert(isRegistered ? 'Registered customer sale saved; ledger balance updated.' : 'Walk-in sale saved. Shared stock reduced.');
-    tab('home');
-  } catch(e) { showAlert(e.message||e) }
+$('saveSale').onclick = async function(){
+ var savedCount=0;
+ try{
+  await requireUser();
+  var items=Array.prototype.slice.call(document.querySelectorAll('.sale-item')).map(function(row){
+   var p=product(row.querySelector('.sale-item-product').value),c=Math.max(0,Number(row.querySelector('.sale-item-cartons').value)||0),l=Math.max(0,Number(row.querySelector('.sale-item-loose').value)||0),r=Math.max(0,Number(row.querySelector('.sale-item-rate').value)||0);
+   if(!p)throw new Error('Select a product in every sale item.');if(c<=0&&l<=0)throw new Error('Enter quantity for '+p.name+'.');
+   var q=c+l/(p.pieces||1);if(q>stock(p))throw new Error('Insufficient stock for '+p.name+'. Available: '+stock(p).toFixed(2)+' cartons.');
+   var pcs=c*(p.pieces||1)+l;return {product:p,qty:q,pieces:pcs,rate:r,total:pcs*r};
+  });
+  if(!items.length)throw new Error('Add at least one product.');
+  var billTotal=items.reduce(function(s,x){return s+x.total;},0);if(billTotal<=0)throw new Error('Enter valid sale rates.');
+  var expense=num('salesExpense'),registered=$('saleCustomerType').value==='registered',mode=$('salesPayment').value,isCredit=mode==='Credit / Due'||mode==='Partial Payment',cid=registered?$('saleCustomer').value:null;
+  if(registered&&!cid)throw new Error('Select a registered customer.');if(isCredit&&!registered)throw new Error('Walk-in customers cannot be given credit.');
+  var received=isCredit?Number($('saleReceivedNow').value||0):billTotal;
+  if(received<0||received>billTotal)throw new Error('Received amount cannot exceed bill total.');
+  if(mode==='Credit / Due'&&received!==0)throw new Error('For full credit, amount received now must be 0.');
+  var cname=registered?((db.customers.find(function(x){return x.id===cid;})||{}).name||''):'',remaining=received;
+  $('saveSale').disabled=true;
+  for(var i=0;i<items.length;i++){
+   var it=items[i],lineExpense=expense*(it.total/billTotal),note=[registered?'Customer: '+cname:'Walk-in / Unregistered Customer',$('salesNote').value.trim()?'Bill: '+$('salesNote').value.trim():null,'Item '+(i+1)+'/'+items.length].filter(Boolean).join(' | ');
+   var res=await sb.from('transactions').insert({product_id:it.product.id,type:'sale',channel:$('salesChannel').value.toLowerCase(),qty_cartons:it.qty,rate:it.rate*(it.product.pieces||1),expense:lineExpense,payment:mode,note:note,created_at:new Date($('salesDate').value+'T12:00:00').toISOString()}).select('id,total').single();
+   if(res.error)throw new Error('Saved '+savedCount+' of '+items.length+' items. '+res.error.message);savedCount++;
+   if(registered){
+    var actual=Number(res.data.total||it.total),led=await sb.from('customer_ledger').insert({customer_id:cid,transaction_id:res.data.id,entry_type:'sale',amount:actual,note:'Sale: '+it.product.name,created_by:session.user.id});
+    if(led.error)throw new Error('Sale saved but customer ledger failed: '+led.error.message);
+    var alloc=Math.min(remaining,actual);remaining-=alloc;
+    if(alloc>0){var pay=await sb.from('customer_ledger').insert({customer_id:cid,transaction_id:res.data.id,entry_type:'payment',amount:alloc,payment_method:mode==='Credit / Due'?'Not received':mode,note:(isCredit?'Part payment: ':'Sale payment: ')+it.product.name,created_by:session.user.id});if(pay.error)throw new Error('Sale saved but payment ledger failed: '+pay.error.message);}
+   }
+  }
+  $('salesNote').value='';$('salesExpense').value='0';$('saleReceivedNow').value='0';$('saleItems').innerHTML='';addSaleItemRow();$('salesPayment').value='Cash';updateSaleCustomerUI();
+  await loadCloud();showAlert('Sales bill saved: '+items.length+' items · '+money(billTotal));tab('home');
+ }catch(e){if(savedCount)await loadCloud();showAlert(e.message||e);}
+ finally{$('saveSale').disabled=false;}
 };
 
 function renderStock() {
@@ -1002,4 +1005,4 @@ setInterval(function() { if(session) loadCloud(); }, 12000);
 })();
 </script>
 </body>
-</html>2
+</html>w
