@@ -73,4 +73,145 @@ $('loginBtn').onclick=async()=>{let b=$('loginBtn');b.disabled=true;msg('authMsg
 $('logoutBtn').onclick=async()=>{await sb.auth.signOut();session=null;$('authScreen').classList.remove('hidden');};
 sb.auth.onAuthStateChange(async(_event,s)=>{session=s;if(s){$('authScreen').classList.add('hidden');try{await loadAll();}catch(e){$('syncStatus').textContent=e.message;}}else $('authScreen').classList.remove('hidden');});
 start().catch(e=>{msg('authMsg',e.message,true);$('syncStatus').textContent='Connection error';});
+</script><style>
+.enhance-tools{display:grid;grid-template-columns:1fr 150px;gap:8px;margin:10px 0 14px}
+.enhance-tools input,.enhance-tools select,.quick-find input{width:100%;padding:12px;border:1px solid #dce5df;border-radius:11px;background:#fbfdfb}
+.quick-find{display:flex;gap:8px;margin:12px 0}
+.quick-find input{flex:1;min-width:0}
+.quick-find button{white-space:nowrap}
+.bill-breakdown{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.bill-breakdown div{background:#f5f8f6;border-radius:10px;padding:10px}
+.bill-breakdown small{display:block;color:#718078;font-size:10px}
+.bill-breakdown b{display:block;margin-top:4px}
+.stock-hint{font-size:10px;color:#718078;margin-top:4px}
+@media(max-width:420px){.enhance-tools{grid-template-columns:1fr}.quick-find{flex-direction:column}}
+</style>
+<script>
+/* Advanced Inventory: live search + stock filters */
+(function(){
+  const productSection=$('products');
+  const productList=$('productList');
+  if(productSection && productList && !$('invSearch')){
+    const tools=document.createElement('div');
+    tools.className='enhance-tools';
+    tools.innerHTML='<input id="invSearch" type="search" placeholder="Search product, SKU or barcode"><select id="invStockFilter"><option value="all">All products</option><option value="low">Low stock</option><option value="out">Out of stock</option><option value="available">In stock</option></select>';
+    productList.parentNode.insertBefore(tools,productList);
+    $('invSearch').addEventListener('input',renderProducts);
+    $('invStockFilter').addEventListener('change',renderProducts);
+  }
+
+  /* Override product rendering only; database data and schema remain unchanged. */
+  renderProducts=function(){
+    const q=($('invSearch')?.value||'').trim().toLowerCase();
+    const mode=$('invStockFilter')?.value||'all';
+    const list=products.filter(p=>{
+      const hay=[p.name,p.sku,p.barcode,p.category].join(' ').toLowerCase();
+      const stock=Number(p.current_stock||0),low=Number(p.low_stock_level||0);
+      const matches=!q||hay.includes(q);
+      const stockMatch=mode==='low'?stock<=low&&stock>0:
+        mode==='out'?stock<=0:
+        mode==='available'?stock>0:true;
+      return matches&&stockMatch;
+    });
+    $('productList').innerHTML=list.map(p=>{
+      const stock=Number(p.current_stock||0),low=Number(p.low_stock_level||0);
+      const status=stock<=0?'OUT OF STOCK':stock<=low?'LOW STOCK':'IN STOCK';
+      return `<div class="listitem"><div class="row"><b>${esc(p.name)}</b><span class="pill">${stock.toLocaleString('en-IN')} ${esc(p.unit||'unit')}</span></div><div class="muted">${esc(p.sku||'No SKU')} · Barcode ${esc(p.barcode||'—')} · ${esc(p.category||'Uncategorized')}</div><div class="muted">Buy ${money(p.purchase_rate)} · Retail ${money(p.retail_rate)} · Wholesale ${money(p.wholesale_rate)}</div><div class="stock-hint">${status} · Alert at ${low} ${esc(p.unit||'unit')}</div></div>`;
+    }).join('')||'<div class="empty">No matching products.</div>';
+  };
+
+  /* Barcode / SKU quick-add for billing. USB/Bluetooth barcode scanners that type
+     into the focused field and send Enter are supported. */
+  const billItems=$('billItems');
+  if(billItems && !$('billQuickFind')){
+    const wrap=document.createElement('div');
+    wrap.className='quick-find';
+    wrap.innerHTML='<input id="billQuickFind" type="search" placeholder="Scan barcode or enter SKU / product name"><button type="button" class="btn soft" id="billFindBtn">FIND / ADD</button>';
+    billItems.parentNode.insertBefore(wrap,billItems);
+    function findAndAdd(){
+      const term=$('billQuickFind').value.trim().toLowerCase();
+      if(!term)return;
+      const p=products.find(x=>String(x.barcode||'').toLowerCase()===term)||
+        products.find(x=>String(x.sku||'').toLowerCase()===term)||
+        products.find(x=>String(x.name||'').toLowerCase()===term)||
+        products.find(x=>String(x.name||'').toLowerCase().includes(term));
+      if(!p){msg('billMsg','No product found for: '+term,true);return;}
+      let row=[...document.querySelectorAll('.itemrow')].find(r=>!r.querySelector('.bi-product').value);
+      if(!row){addBillItem();row=document.querySelector('.itemrow:last-child');}
+      const select=row.querySelector('.bi-product');
+      select.value=p.id;
+      select.dispatchEvent(new Event('change'));
+      $('billQuickFind').value='';
+      $('billQuickFind').focus();
+      msg('billMsg','Added: '+p.name);
+    }
+    $('billFindBtn').addEventListener('click',findAndAdd);
+    $('billQuickFind').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();findAndAdd();}});
+  }
+
+  /* Detailed live total: subtotal before discount, discount, tax and final total. */
+  const totalCard=$('billTotal')?.closest('.card');
+  if(totalCard && !$('billBreakdown')){
+    const breakdown=document.createElement('div');
+    breakdown.id='billBreakdown';
+    breakdown.className='bill-breakdown';
+    breakdown.innerHTML='<div><small>Subtotal</small><b id="billSubTotal">₹0</b></div><div><small>Item discount</small><b id="billDiscountTotal">₹0</b></div><div><small>Tax</small><b id="billTaxTotal">₹0</b></div><div><small>Other charges</small><b id="billOtherTotal">₹0</b></div>';
+    totalCard.appendChild(breakdown);
+  }
+  const originalCalcBill=calcBill;
+  calcBill=function(){
+    let subtotal=0,discount=0,tax=0;
+    document.querySelectorAll('.itemrow').forEach(r=>{
+      const q=Math.max(0,Number(r.querySelector('.bi-qty')?.value)||0);
+      const rate=Math.max(0,Number(r.querySelector('.bi-rate')?.value)||0);
+      const disc=Math.max(0,Number(r.querySelector('.bi-discount')?.value)||0);
+      const taxRate=Math.max(0,Number(r.querySelector('.bi-tax')?.value)||0);
+      const gross=q*rate, taxable=Math.max(0,gross-disc);
+      subtotal+=gross;discount+=Math.min(gross,disc);tax+=taxable*taxRate/100;
+    });
+    const other=Math.max(0,Number($('billCharges').value)||0);
+    $('billTotal').textContent=money(subtotal-discount+tax+other);
+    if($('billSubTotal'))$('billSubTotal').textContent=money(subtotal);
+    if($('billDiscountTotal'))$('billDiscountTotal').textContent=money(discount);
+    if($('billTaxTotal'))$('billTaxTotal').textContent=money(tax);
+    if($('billOtherTotal'))$('billOtherTotal').textContent=money(other);
+  };
+
+  /* Show selected product stock under each billing row. */
+  document.addEventListener('change',e=>{
+    if(!e.target.matches('.bi-product'))return;
+    const row=e.target.closest('.itemrow');
+    const p=products.find(x=>x.id===e.target.value);
+    let hint=row.querySelector('.stock-hint');
+    if(!hint){hint=document.createElement('div');hint.className='stock-hint';e.target.closest('.field').appendChild(hint);}
+    hint.textContent=p?`Available: ${Number(p.current_stock||0).toLocaleString('en-IN')} ${p.unit||'unit'} · Barcode: ${p.barcode||'—'}`:'';
+  });
+
+  /* Guard against accidental sales beyond available stock. This checks only
+     tracked inventory for sale and purchase-return bills. */
+  const postButton=$('postBill');
+  if(postButton && !postButton.dataset.stockGuard){
+    const existingHandler=postButton.onclick;
+    postButton.onclick=async function(event){
+      const type=$('billType').value;
+      if(type==='sale'||type==='purchase_return'){
+        for(const row of document.querySelectorAll('.itemrow')){
+          const p=products.find(x=>x.id===row.querySelector('.bi-product').value);
+          if(!p)continue;
+          if(p.track_inventory===true){
+            const qty=Number(row.querySelector('.bi-qty').value)||0;
+            const available=Number(p.current_stock)||0;
+            if(qty>available){
+              msg('billMsg',`Insufficient stock: ${p.name}. Available ${available} ${p.unit||'unit'}.`,true);
+              row.scrollIntoView({behavior:'smooth',block:'center'});
+              return;
+            }
+          }
+        }
+      }
+      return existingHandler.call(this,event);
+    };
+    postButton.dataset.stockGuard='1';
+  }
+})();
 </script></body></html>
